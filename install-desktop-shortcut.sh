@@ -15,6 +15,7 @@ echo "[設定] Linux Auto のショートカットをシステムに登録しま
 
 # 実行権限の付与
 chmod +x "$SCRIPT_DIR/start.sh"
+chmod +x "$SCRIPT_DIR/connect.sh"
 chmod +x "$SCRIPT_DIR/app.py"
 
 mkdir -p "$APPS_DIR"
@@ -32,7 +33,7 @@ Comment=Google DHU を使用した Android Auto 接続 GUI ツール
 Exec=$SCRIPT_DIR/start.sh
 Path=$SCRIPT_DIR
 Icon=$ICON_PATH
-Terminal=true
+Terminal=false
 Categories=Utility;AudioVideo;
 StartupNotify=true
 EOF

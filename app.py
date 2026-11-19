@@ -35,12 +35,6 @@ import subprocess
 import configparser
 import webbrowser
 from pathlib import Path
-
-# Linux環境における擬似端末(PTY)サポートのインポート
-try:
-    import pty
-except ImportError:
-    pty = None
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -380,75 +374,35 @@ class DHUManager:
 
             start_time = time.time()
             last_dhu_output = ""
-            master_fd = None
-            slave_fd = None
 
             try:
                 dhu_work_dir = str(dhu_file.parent)
 
-                if pty is not None and hasattr(pty, "openpty"):
-                    master_fd, slave_fd = pty.openpty()
-                    stdin_arg = slave_fd
-                else:
-                    stdin_arg = subprocess.PIPE
-
-                # パイプバッファのデッドロックを防ぐため、出力をログファイルにリダイレクト
-                log_file_path = Path("/tmp/linux_auto_dhu.log")
-                log_write_f = open(log_file_path, "w+", encoding="utf-8", errors="replace")
-
                 self.process = subprocess.Popen(
                     cmd,
-                    stdout=log_write_f,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    stdin=stdin_arg,
+                    universal_newlines=True,
+                    bufsize=1,
                     env=env,
-                    cwd=dhu_work_dir,
-                    close_fds=True
+                    cwd=dhu_work_dir
                 )
-
-                if slave_fd is not None:
-                    try:
-                        os.close(slave_fd)
-                    except Exception:
-                        pass
-
                 with self._lock:
                     self.status = "RUNNING"
                     self.last_error = ""
 
                 self.add_log(f"[接続] desktop-head-unit を起動しました (PID: {self.process.pid})")
 
-                # ログファイルを非同期でリアルタイム追尾するスレッド
-                def follow_log():
-                    nonlocal last_dhu_output
-                    time.sleep(0.1)
-                    try:
-                        with open(log_file_path, "r", encoding="utf-8", errors="replace") as rf:
-                            while self.process and self.process.poll() is None:
-                                line = rf.readline()
-                                if line:
-                                    clean = line.strip()
-                                    if clean:
-                                        last_dhu_output = clean
-                                        self.add_log(f"[DHU] {clean}")
-                                else:
-                                    time.sleep(0.1)
-                            # 終了後の残余ログを読み切る
-                            for line in rf.readlines():
-                                clean = line.strip()
-                                if clean:
-                                    last_dhu_output = clean
-                                    self.add_log(f"[DHU] {clean}")
-                    except Exception:
-                        pass
-
-                log_reader_thread = threading.Thread(target=follow_log, daemon=True)
-                log_reader_thread.start()
+                # 出力ログのリアルタイム読み取り
+                if self.process.stdout:
+                    for line in self.process.stdout:
+                        clean_line = line.strip()
+                        if clean_line:
+                            last_dhu_output = clean_line
+                            self.add_log(f"[DHU] {clean_line}")
 
                 self.process.wait()
                 exit_code = self.process.returncode
-                log_write_f.close()
-                log_reader_thread.join(timeout=1.0)
                 elapsed = time.time() - start_time
                 self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
 
@@ -464,13 +418,6 @@ class DHUManager:
                     self.status = "ERROR"
                     self.last_error = str(e)
                 break
-            finally:
-                # 保持していた擬似端末マスターを安全に閉じる
-                if master_fd is not None:
-                    try:
-                        os.close(master_fd)
-                    except Exception:
-                        pass
 
             # ユーザーが明示的に停止した場合はループを抜けて終了
             if self.user_stopped:
