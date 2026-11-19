@@ -107,6 +107,7 @@ NoDisplay=false
 X-GNOME-Autostart-enabled=true
 Comment=Linux Auto Background Service
 EOF
+chmod +x ~/.config/autostart/linux-auto.desktop
 ```
 
 ---
