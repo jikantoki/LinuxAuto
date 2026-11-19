@@ -5,6 +5,6 @@ Name=Linux Auto
 GenericName=Android Auto Headunit Support
 Comment=Google DHU を使用した Android Auto 接続 GUI ツール
 Exec=./start.sh
-Terminal=false
+Terminal=true
 Categories=Utility;AudioVideo;
 StartupNotify=true

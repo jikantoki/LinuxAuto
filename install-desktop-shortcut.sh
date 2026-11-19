@@ -32,7 +32,7 @@ Comment=Google DHU を使用した Android Auto 接続 GUI ツール
 Exec=$SCRIPT_DIR/start.sh
 Path=$SCRIPT_DIR
 Icon=$ICON_PATH
-Terminal=false
+Terminal=true
 Categories=Utility;AudioVideo;
 StartupNotify=true
 EOF
