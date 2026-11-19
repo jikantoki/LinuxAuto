@@ -335,16 +335,19 @@ class DHUManager:
     def _run_and_monitor_loop(self, dhu_path):
         """
         【重要ロジック】
-        DHUプロセスの実行と、USBケーブル抜け時の『10秒自動復帰』を制御する監視ループ。
+        DHUプロセスの実行、起動直後のUSBモード切り替え瞬断の即時リカバリ、
+        および利用中のUSBケーブル抜け時の『10秒自動復帰』を制御する監視ループ。
         """
+        instant_retry_count = 0  # 起動直後の瞬断連続カウント
+
         while not self.user_stopped:
             cmd = [dhu_path, "--usb"]
             self.add_log(f"[実行] コマンド呼び出し: {' '.join(cmd)}")
 
+            start_time = time.time()
+
             try:
                 # subprocess.Popen で非同期にDHUを起動
-                # 標準出力・エラー出力をパイプで受け取り、リアルタイムにログ化します
-                # (Node.jsの spawn(cmd, ['--usb'], { stdio: 'pipe' }) と同等)
                 self.process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
@@ -367,7 +370,8 @@ class DHUManager:
 
                 self.process.wait()
                 exit_code = self.process.returncode
-                self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code})")
+                elapsed = time.time() - start_time
+                self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
 
             except Exception as e:
                 self.add_log(f"[例外] DHU起動失敗: {e}")
@@ -381,8 +385,38 @@ class DHUManager:
                 break
 
             # =================================================================
-            # 【要件】切断後10秒は再接続時に自動復帰を試みる
+            # 【スマート復帰判定】
+            # Android Autoの仕様上、起動直後 (約3.5秒以内) にプロセスが落ちる現象は、
+            # スマホが「通常USBモード(MTP等)」から「Android Open Accessory(AOA)モード」へ
+            # 切り替わる際の一瞬のUSB再初期化（バスリセット）によるものです。
+            # この時は10秒待たずに【約1.2秒後】に即座に再起動することでシームレスに接続できます。
             # =================================================================
+            is_instant_drop = (elapsed < 3.5)
+
+            if is_instant_drop and instant_retry_count < 3:
+                instant_retry_count += 1
+                self.add_log(f"[モード切替検知] AOAアクセサリ切り替えによる瞬断を検知 ({instant_retry_count}/3回目)。1.5秒後に即時再試行します...")
+                with self._lock:
+                    self.status = "RECONNECTING"
+                    self.retry_countdown = 1
+
+                # 1.5秒待機（スマホ側が新しいUSBデバイスとしてOSに再認識されるのを待つ）
+                for _ in range(15):
+                    if self.user_stopped:
+                        break
+                    time.sleep(0.1)
+
+                with self._lock:
+                    self.retry_countdown = 0
+
+                if self.user_stopped:
+                    break
+                continue
+
+            # =================================================================
+            # 【要件】通常稼働後の切断は、10秒カウントダウンしながら再接続待機
+            # =================================================================
+            instant_retry_count = 0  # 安定稼働後の切断なのでカウンターをリセット
             self.add_log("[検知] 接続切断（USB抜け等の可能性）。10秒後に自動再接続を試みます...")
             with self._lock:
                 self.status = "RECONNECTING"
