@@ -35,6 +35,12 @@ import subprocess
 import configparser
 import webbrowser
 from pathlib import Path
+
+# Linux環境における擬似端末(PTY)サポートのインポート
+try:
+    import pty
+except ImportError:
+    pty = None
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -374,18 +380,44 @@ class DHUManager:
 
             start_time = time.time()
             last_dhu_output = ""
+            master_fd = None
+            slave_fd = None
 
             try:
-                # subprocess.Popen で非同期にDHUを起動（補正した環境変数と作業ディレクトリを適用）
+                dhu_work_dir = str(dhu_file.parent)
+
+                # =============================================================
+                # 【決定打】擬似端末 (PTY) による対話型端末環境の提供
+                # DHU は起動直後にキーボード入力プロンプトを表示しますが、標準入力が
+                # TTY (端末) ではなく EOF を返すと、即座に exit(0) で正常終了してしまいます。
+                # pty.openpty() で仮想端末ペアを作成し、子プロセスに「本物の端末」として
+                # 認識させることで、ウィンドウが開いたまま安定して動作し続けます。
+                # =============================================================
+                if pty is not None and hasattr(pty, "openpty"):
+                    master_fd, slave_fd = pty.openpty()
+                    stdin_arg = slave_fd
+                else:
+                    stdin_arg = subprocess.PIPE
+
                 self.process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
+                    stdin=stdin_arg,
                     universal_newlines=True,
                     bufsize=1,
                     env=env,
-                    cwd=str(HOME_DIR)
+                    cwd=dhu_work_dir,
+                    close_fds=True
                 )
+
+                # 親側では slave_fd は不要なので閉じる（master_fd を開いたまま保持してEOFを防ぐ）
+                if slave_fd is not None:
+                    try:
+                        os.close(slave_fd)
+                    except Exception:
+                        pass
+
                 with self._lock:
                     self.status = "RUNNING"
                     self.last_error = ""
@@ -405,9 +437,11 @@ class DHUManager:
                 elapsed = time.time() - start_time
                 self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
 
-                if exit_code != 0 and last_dhu_output:
+                if exit_code != 0:
+                    if last_dhu_output:
+                        self.add_log(f"[エラー詳細] DHU最終出力: {last_dhu_output}")
                     with self._lock:
-                        self.last_error = f"DHU終了コード {exit_code}: {last_dhu_output}"
+                        self.last_error = f"DHU終了コード {exit_code}: {last_dhu_output or '異常終了'}"
 
             except Exception as e:
                 self.add_log(f"[例外] DHU起動失敗: {e}")
@@ -415,6 +449,13 @@ class DHUManager:
                     self.status = "ERROR"
                     self.last_error = str(e)
                 break
+            finally:
+                # 保持していた擬似端末マスターを安全に閉じる
+                if master_fd is not None:
+                    try:
+                        os.close(master_fd)
+                    except Exception:
+                        pass
 
             # ユーザーが明示的に停止した場合はループを抜けて終了
             if self.user_stopped:
