@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Linux Auto
+GenericName=Android Auto Headunit Support
+Comment=Google DHU を使用した Android Auto 接続 GUI ツール
+Exec=bash -c "cd $(dirname %k) && ./start.sh"
+Icon=car
+Terminal=false
+Categories=Utility;AudioVideo;
+StartupNotify=true
