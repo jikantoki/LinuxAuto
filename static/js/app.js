@@ -384,7 +384,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateIniPreview() {
         const data = getCurrentFormData();
         const content =
-`[General]
+`[general]
 touch = ${data.touch}
 touchpad = ${data.touchpad}
 resolution = ${data.resolution}

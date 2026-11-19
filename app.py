@@ -68,7 +68,7 @@ class ConfigManager:
     """
 
     DEFAULT_INI = {
-        "General": {
+        "general": {
             "touch": "true",
             "touchpad": "false",
             "resolution": "1920x1080",
@@ -148,37 +148,41 @@ class ConfigManager:
     def load_headunit_ini(cls):
         """
         ~/.android/headunit.ini を読み込み、辞書型(JSON互換)で返します。
-        Python標準の configparser (PHPの parse_ini_file に相当) を使用します。
+        大文字[General]・小文字[general]の両方に対応します。
         """
-        # インラインコメント（# や ;）も無視して純粋な値を取得できるように設定
         config = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
         
         # ファイルが存在しない場合はデフォルト値を生成して保存
         if not HEADUNIT_INI_PATH.exists():
-            cls.save_headunit_ini(cls.DEFAULT_INI["General"])
-            return cls.DEFAULT_INI["General"]
+            cls.save_headunit_ini(cls.DEFAULT_INI["general"])
+            return cls.DEFAULT_INI["general"]
 
         try:
             config.read(str(HEADUNIT_INI_PATH), encoding="utf-8")
-            if "General" in config:
+            target_sec = None
+            if "general" in config:
+                target_sec = "general"
+            elif "General" in config:
+                target_sec = "General"
+
+            if target_sec:
                 general = {}
-                for k, v in config["General"].items():
+                for k, v in config[target_sec].items():
                     # 行末コメントや余計な空白を徹底的に除去
                     cleaned_val = v.split("#")[0].split(";")[0].strip()
                     general[k] = cleaned_val
                 return general
             else:
-                return cls.DEFAULT_INI["General"]
+                return cls.DEFAULT_INI["general"]
         except Exception as e:
             print(f"[WARN] Failed to read headunit.ini: {e}", file=sys.stderr)
-            return cls.DEFAULT_INI["General"]
+            return cls.DEFAULT_INI["general"]
 
     @classmethod
     def save_headunit_ini(cls, general_data):
         """
         ~/.android/headunit.ini に設定を保存します。
-        Google DHUのパースエラーを防ぐため、コメント（# や ;）は一切含めず
-        純粋な key = value 形式で書き出します。
+        Google DHUの公式仕様に準拠し、小文字 [general] かつコメントなしで書き出します。
         """
         HEADUNIT_INI_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -188,9 +192,9 @@ class ConfigManager:
         dpi = str(general_data.get("dpi", "280")).strip()
         framerate = str(general_data.get("framerate", "30")).strip()
 
-        # Google DHU仕様: コメントは構文エラーや値の巻き込みの原因になるため完全に除外
+        # Google DHU公式仕様: [general]（小文字）でコメントなし
         content = (
-            "[General]\n"
+            "[general]\n"
             f"touch = {touch}\n"
             f"touchpad = {touchpad}\n"
             f"resolution = {resolution}\n"
