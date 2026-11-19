@@ -143,7 +143,7 @@ Google Chrome, Chromium, Microsoft Edge などで `http://127.0.0.1:8855` を開
   - ※ Google DHU の構文仕様に準拠し、コメント（`#` や `;`）を含まないクリーンな形式で `~/.android/headunit.ini` に保存されます。
 
 ```ini
-[General]
+[general]
 touch = true
 touchpad = false
 resolution = 1920x1080
