@@ -65,7 +65,9 @@ document.addEventListener("DOMContentLoaded", () => {
         iniPreview: document.getElementById("ini-preview"),
         saveStatusMsg: document.getElementById("save-status-msg"),
 
-        // トースト
+        // PWA & トースト
+        pwaBanner: document.getElementById("pwa-banner"),
+        btnInstallPwa: document.getElementById("btn-install-pwa"),
         toast: document.getElementById("toast"),
     };
 
@@ -383,11 +385,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = getCurrentFormData();
         const content =
 `[General]
-touch = ${data.touch} #タッチパネルの許可
-touchpad = ${data.touchpad} #基本はfalseで良い
-resolution = ${data.resolution} #解像度
+touch = ${data.touch}
+touchpad = ${data.touchpad}
+resolution = ${data.resolution}
 dpi = ${data.dpi}
-framerate = ${data.framerate} #最大フレームレート`;
+framerate = ${data.framerate}`;
 
         elements.iniPreview.textContent = content;
     }
@@ -455,7 +457,75 @@ framerate = ${data.framerate} #最大フレームレート`;
     });
 
     // =========================================================================
-    // 8. 初期化と定期ポーリング開始
+    // 8. ガイド内コードブロックのコピー機能
+    // =========================================================================
+    document.querySelectorAll(".btn-copy").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const textToCopy = btn.getAttribute("data-copy");
+            if (!textToCopy) return;
+
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                const originalText = btn.textContent;
+                btn.textContent = "コピー完了!";
+                btn.style.backgroundColor = "var(--success)";
+                showToast("コマンドをクリップボードにコピーしました");
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.backgroundColor = "";
+                }, 2000);
+            } catch (err) {
+                console.error("Copy failed:", err);
+                showToast("コピーに失敗しました (手動で選択してコピーしてください)", 3000);
+            }
+        });
+    });
+
+    // =========================================================================
+    // 9. PWA (Progressive Web App) 対応
+    // =========================================================================
+    let deferredPrompt = null;
+
+    // Service Worker の登録
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("sw.js")
+                .then(reg => console.log("Service Worker registered:", reg.scope))
+                .catch(err => console.error("Service Worker registration failed:", err));
+        });
+    }
+
+    // PWAインストールプロンプトイベント
+    window.addEventListener("beforeinstallprompt", (e) => {
+        // デフォルトのブラウザプロンプトを抑止
+        e.preventDefault();
+        deferredPrompt = e;
+        // サイドバーのPWAインストールバナーを表示
+        if (elements.pwaBanner) {
+            elements.pwaBanner.classList.add("show");
+        }
+    });
+
+    if (elements.btnInstallPwa) {
+        elements.btnInstallPwa.addEventListener("click", async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log("PWA install choice:", outcome);
+            deferredPrompt = null;
+            elements.pwaBanner.classList.remove("show");
+        });
+    }
+
+    window.addEventListener("appinstalled", () => {
+        showToast("Linux Auto がアプリとしてインストールされました！");
+        if (elements.pwaBanner) {
+            elements.pwaBanner.classList.remove("show");
+        }
+    });
+
+    // =========================================================================
+    // 10. 初期化と定期ポーリング開始
     // =========================================================================
     loadConfig();
     updateStatus();

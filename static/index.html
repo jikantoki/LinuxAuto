@@ -4,8 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linux Auto - Android Auto Headunit Support</title>
+    <!-- PWA Settings -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#18202c">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Linux Auto">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
     <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'><path d='M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z'/><circle cx='7.5' cy='14.5' r='1.5'/><circle cx='16.5' cy='14.5' r='1.5'/></svg>">
 </head>
 <body>
     <div class="app-layout">
@@ -38,6 +46,12 @@
                     </svg>
                     <span>設定</span>
                 </button>
+                <button class="nav-item" data-tab="tab-guide">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 .88-.36 1.68-.93 2.25z"/>
+                    </svg>
+                    <span>導入ガイド</span>
+                </button>
                 <button class="nav-item" data-tab="tab-about">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
@@ -47,6 +61,15 @@
             </nav>
 
             <div class="sidebar-footer">
+                <!-- PWA インストールバナー -->
+                <div class="pwa-install-banner" id="pwa-banner">
+                    <div class="pwa-text">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+                        <span>アプリ化</span>
+                    </div>
+                    <button class="btn btn-sm btn-primary" id="btn-install-pwa">インストール</button>
+                </div>
+
                 <div class="connection-badge" id="sidebar-badge">
                     <span class="status-dot"></span>
                     <span class="status-label">停止中</span>
@@ -303,7 +326,186 @@
 
 
             <!-- ========================================================= -->
-            <!-- 3. Aboutページ (開発者・プロジェクト情報) -->
+            <!-- 3. 導入ガイド (Android SDK / DHU / 自動起動の解説) -->
+            <!-- ========================================================= -->
+            <section id="tab-guide" class="tab-pane">
+                <header class="pane-header">
+                    <h2>導入・設定ガイド</h2>
+                    <p class="subtitle">Android SDK、Desktop Head Unit (DHU) の導入から Linux の自動起動設定までステップ順に解説します</p>
+                </header>
+
+                <div class="card guide-card">
+                    
+                    <!-- STEP 1 -->
+                    <div class="guide-step">
+                        <div class="step-number">1</div>
+                        <div class="step-body">
+                            <h3>Android SDK と Google DHU の導入</h3>
+                            <p class="step-lead">
+                                Linux Auto を動かすには、Google公式の <code>desktop-head-unit</code> バイナリ（パッケージ名: <code>extras;google;auto</code>）が必要です。
+                                以下のいずれかの方法でインストールしてください。
+                            </p>
+
+                            <!-- パターンA: ターミナルでサクッと導入 -->
+                            <div class="guide-sub-section">
+                                <h4>方法A: ターミナルから導入（おすすめ・Android Studio不要）</h4>
+                                <p>巨大な Android Studio を入れずに、コマンドラインツールだけで最速インストールする手順です。</p>
+                                
+                                <ol>
+                                    <li>必要なJava環境と解凍ツールをインストールします：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget</pre>
+                                            <button class="btn-copy" data-copy="sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li>Android SDKディレクトリを作成し、公式コマンドラインツールを配置します：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">mkdir -p ~/Android/Sdk/cmdline-tools
+cd ~/Android/Sdk/cmdline-tools
+wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip</pre>
+                                            <button class="btn-copy" data-copy="mkdir -p ~/Android/Sdk/cmdline-tools &amp;&amp; cd ~/Android/Sdk/cmdline-tools &amp;&amp; wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip &amp;&amp; unzip cmdline-tools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdline-tools.zip">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li><code>extras;google;auto</code>（DHU）をインストールします：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "extras;google;auto"</pre>
+                                            <button class="btn-copy" data-copy="yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk &quot;extras;google;auto&quot;">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li>バイナリに実行権限を付与します：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre>
+                                            <button class="btn-copy" data-copy="chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit">コピー</button>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <!-- パターンB: Android Studio (GUI) から導入 -->
+                            <div class="guide-sub-section">
+                                <h4>方法B: Android Studio (GUI) から導入する場合</h4>
+                                <ol>
+                                    <li>Android Studio を起動し、スタート画面の <strong>「More Actions」→「SDK Manager」</strong>（または設定内の「Languages &amp; Frameworks」→「Android SDK」）を開きます。</li>
+                                    <li>上部のタブで <strong>「SDK Tools」</strong> を選択します。</li>
+                                    <li>一覧の中にある <strong>「Android Auto Desktop Head Unit emulator」</strong> にチェックを入れます。</li>
+                                    <li>右下の <strong>「Apply」</strong> をクリックしてダウンロード・インストールを完了させます。</li>
+                                    <li>インストール完了後、以下のパスに実行ファイルが配置されます：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre>
+                                            <button class="btn-copy" data-copy="chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit">コピー</button>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <div class="callout callout-tip">
+                                💡 <strong>パスの確認:</strong> インストール完了後、本アプリの「設定」画面を開き、「標準パス自動探索」ボタンを押すだけで自動認識されます。
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2 -->
+                    <div class="guide-step">
+                        <div class="step-number">2</div>
+                        <div class="step-body">
+                            <h3>スマートフォン側の設定 (Android Auto 開発者モード)</h3>
+                            <p class="step-lead">
+                                Androidスマートフォン側で、車載通信サーバー（ヘッドユニットサーバー）を起動する必要があります。
+                            </p>
+
+                            <div class="guide-sub-section">
+                                <h4>スマホ側の操作手順</h4>
+                                <ol>
+                                    <li>スマートフォンの「設定」アプリを開き、検索バーで <strong>「Android Auto」</strong> を検索して開きます。</li>
+                                    <li>画面を一番下までスクロールし、<strong>「バージョン」</strong> という項目を <strong>10回連続でタップ</strong> します。</li>
+                                    <li>「開発者向け設定を有効にしますか？」とポップアップが出るので <strong>「OK」</strong> をタップします。</li>
+                                    <li>画面右上の <strong>「︙（メニュー）」</strong> をタップし、<strong>「ヘッドユニットサーバーを起動」</strong> を選択します。</li>
+                                    <li>スマートフォンとPCをUSBケーブルで接続します（充電専用ケーブルではなく、データ通信対応ケーブルをご使用ください）。</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 3 -->
+                    <div class="guide-step">
+                        <div class="step-number">3</div>
+                        <div class="step-body">
+                            <h3>Linux起動時の自動起動（Autostart）設定</h3>
+                            <p class="step-lead">
+                                PCや車載PCを起動した際に、自動で Linux Auto をバックグラウンド起動させる設定手順です。
+                            </p>
+
+                            <div class="guide-sub-section">
+                                <h4>1. <code>start.sh</code> に実行権限を付与</h4>
+                                <p>まずは起動スクリプトに実行権限（chmod +x）を付与します：</p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">cd ~/LinuxAuto
+chmod +x start.sh app.py</pre>
+                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x start.sh app.py">コピー</button>
+                                </div>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>2. 自動起動用オプション: <code>--no-browser</code>（ブラウザ自動起動の抑止）</h4>
+                                <p>
+                                    通常 <code>./start.sh</code> を実行すると自動でブラウザが開きますが、PCの自動起動時にブラウザを勝手に開かせたくない場合は、
+                                    <strong><code>--no-browser</code>（または <code>-n</code>）</strong> 引数を渡します：
+                                </p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">./start.sh --no-browser</pre>
+                                    <button class="btn-copy" data-copy="./start.sh --no-browser">コピー</button>
+                                </div>
+                                <p class="help-text">
+                                    ※ サーバーはバックグラウンドでポート <code>8855</code> で待ち受け状態になります。操作したい時だけブラウザやPWAから <code>http://127.0.0.1:8855</code> を開けばOKです。
+                                </p>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>3. Ubuntu / Kubuntu の自動起動に登録する方法</h4>
+                                
+                                <p><strong>【方法1: GUIから登録する】</strong></p>
+                                <ul>
+                                    <li><strong>Kubuntu (KDE Plasma)</strong>: 「システム設定」→「起動と終了」→「自動起動」を開き、「プログラムを追加」から <code>/path/to/LinuxAuto/start.sh</code> を指定し、引数に <code>--no-browser</code> を入力します。</li>
+                                    <li><strong>Ubuntu (GNOME)</strong>: Superキー（Windowsキー）を押し、「自動起動するアプリケーション」を検索して開きます。「追加」を押し、コマンドに <code>/home/ユーザー名/LinuxAuto/start.sh --no-browser</code> を指定します。</li>
+                                </ul>
+
+                                <p style="margin-top: 1rem;"><strong>【方法2: ターミナルから一発で登録する（Autostart .desktopファイル）】</strong></p>
+                                <p>以下のコマンドを実行すると、ログイン時の自動起動設定ファイルが自動作成されます：</p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">mkdir -p ~/.config/autostart
+cat &lt;&lt;EOF &gt; ~/.config/autostart/linux-auto.desktop
+[Desktop Entry]
+Type=Application
+Name=Linux Auto (Autostart)
+Exec=$(pwd)/start.sh --no-browser
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Comment=Linux Auto Background Service
+EOF</pre>
+                                    <button class="btn-copy" data-copy="mkdir -p ~/.config/autostart
+cat &lt;&lt;EOF &gt; ~/.config/autostart/linux-auto.desktop
+[Desktop Entry]
+Type=Application
+Name=Linux Auto (Autostart)
+Exec=$(pwd)/start.sh --no-browser
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Comment=Linux Auto Background Service
+EOF">コピー</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- ========================================================= -->
+            <!-- 4. Aboutページ (開発者・プロジェクト情報) -->
             <!-- ========================================================= -->
             <section id="tab-about" class="tab-pane">
                 <header class="pane-header">

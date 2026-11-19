@@ -85,6 +85,39 @@ chmod +x install-desktop-shortcut.sh
 
 Ubuntu / Kubuntu のアプリケーションランチャーやデスクトップに「Linux Auto」アイコンが追加され、ダブルクリックで起動できるようになります。
 
+### 方法3: PC起動時の自動起動（ブラウザを開かないヘッドレス起動）
+
+車載PCやLinux起動時に自動で立ち上げる場合、ブラウザが勝手に立ち上がらないようにする `--no-browser` オプションが利用可能です：
+
+```bash
+./start.sh --no-browser
+```
+
+#### Ubuntu / Kubuntu の自動起動 (Autostart) への一括登録コマンド:
+
+```bash
+mkdir -p ~/.config/autostart
+cat <<EOF > ~/.config/autostart/linux-auto.desktop
+[Desktop Entry]
+Type=Application
+Name=Linux Auto
+Exec=$(pwd)/start.sh --no-browser
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Comment=Linux Auto Background Service
+EOF
+```
+
+---
+
+## PWA (Progressive Web App) 対応
+
+Google Chrome, Chromium, Microsoft Edge などで `http://127.0.0.1:8855` を開くと、アドレスバー右端またはサイドバーの「アプリ化」ボタンから **PWAアプリとしてインストール** できます。
+
+- アドレスバーやタブのない独立したネイティブアプリ風ウィンドウで起動します。
+- 車載タッチスクリーンや全画面表示に最適です。
+
 ---
 
 ## 画面構成と機能
@@ -106,7 +139,16 @@ Ubuntu / Kubuntu のアプリケーションランチャーやデスクトップ
   - `resolution`: 画面解像度（1920x1080 FHD, 1280x720 HD, 800x480, 2560x1440 2K, カスタム入力）
   - `dpi`: 画面密度（スライダー＆数値入力、120〜480）
   - `framerate`: 最大フレームレート（30 fps / 60 fps）
-  - 保存ボタンを押すと、即座に `~/.android/headunit.ini` に反映されます。
+  - ※ Google DHU の構文仕様に準拠し、コメント（`#` や `;`）を含まないクリーンな形式で `~/.android/headunit.ini` に保存されます。
+
+```ini
+[General]
+touch = true
+touchpad = false
+resolution = 1920x1080
+dpi = 280
+framerate = 30
+```
 
 ### 3. Aboutページ
 

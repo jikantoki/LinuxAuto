@@ -25,9 +25,13 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 echo "[起動] Linux Auto サーバーを起動しています..."
-echo "[情報] ブラウザが自動的に開きます (http://127.0.0.1:8855)"
+if [[ "$*" != *"--no-browser"* ]] && [[ "$*" != *"-n"* ]]; then
+    echo "[情報] ブラウザが自動的に開きます (http://127.0.0.1:8855)"
+else
+    echo "[情報] 自動起動モード (--no-browser): ブラウザの自動起動をスキップします"
+fi
 echo "[ヒント] 停止するには、この端末で Ctrl+C を押してください。"
 echo "----------------------------------------------------------"
 
-# 2. 外部依存なしのPythonサーバーを直接実行
-exec python3 "$SCRIPT_DIR/app.py"
+# 2. 外部依存なしのPythonサーバーを直接実行（渡された引数をそのまま引き継ぎます）
+exec python3 "$SCRIPT_DIR/app.py" "$@"

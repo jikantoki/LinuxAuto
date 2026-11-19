@@ -1,0 +1,18 @@
+{
+  "name": "Linux Auto - Android Auto Headunit",
+  "short_name": "Linux Auto",
+  "description": "Google DHU (Desktop Head Unit) Support GUI for Ubuntu & Kubuntu",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f141c",
+  "theme_color": "#18202c",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
