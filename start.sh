@@ -12,6 +12,31 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# =============================================================================
+# 環境変数の補正 (GUIショートカット起動時にもターミナルと同じ環境を確実に再現)
+# =============================================================================
+# 1. ユーザーのプロファイル・シェル設定をロード
+if [ -f "$HOME/.profile" ]; then
+    . "$HOME/.profile" >/dev/null 2>&1 || true
+fi
+if [ -f "$HOME/.bashrc" ]; then
+    . "$HOME/.bashrc" >/dev/null 2>&1 || true
+fi
+
+# 2. Android SDK ツール (adb, desktop-head-unit) の標準パスを PATH に追加
+SDK_PATHS=(
+    "$HOME/Android/Sdk/platform-tools"
+    "$HOME/Android/Sdk/cmdline-tools/latest/bin"
+    "$HOME/Android/Sdk/extras/google/auto"
+    "$HOME/.android-sdk/platform-tools"
+    "/usr/lib/android-sdk/platform-tools"
+)
+for p in "${SDK_PATHS[@]}"; do
+    if [ -d "$p" ]; then
+        export PATH="$p:$PATH"
+    fi
+done
+
 echo "=========================================================="
 echo "  Linux Auto - Android Auto Headunit Support"
 echo "  開発者: エノキ電気 ENOKI ELECTRONICS"

@@ -340,20 +340,51 @@ class DHUManager:
         """
         instant_retry_count = 0  # 起動直後の瞬断連続カウント
 
+        # =====================================================================
+        # 環境変数 PATH の自動補正
+        # GUIショートカット(.desktop)から起動された場合、システムの最小限のPATHしか通っておらず、
+        # DHUが内部で必要とする 'adb' (platform-tools) が見つからずに即終了する問題を防ぎます。
+        # =====================================================================
+        env = os.environ.copy()
+        path_list = env.get("PATH", "").split(os.pathsep)
+
+        dhu_file = Path(dhu_path).resolve()
+        sdk_candidates = [
+            dhu_file.parent.parent.parent.parent,  # .../Android/Sdk
+            HOME_DIR / "Android" / "Sdk",
+            HOME_DIR / "AndroidSdk",
+            HOME_DIR / ".android-sdk",
+            Path("/usr/lib/android-sdk"),
+        ]
+
+        for sdk in sdk_candidates:
+            pt = sdk / "platform-tools"
+            if pt.is_dir() and str(pt) not in path_list:
+                path_list.insert(0, str(pt))
+            cl = sdk / "cmdline-tools" / "latest" / "bin"
+            if cl.is_dir() and str(cl) not in path_list:
+                path_list.insert(0, str(cl))
+
+        env["PATH"] = os.pathsep.join(path_list)
+        env["HOME"] = str(HOME_DIR)
+
         while not self.user_stopped:
             cmd = [dhu_path, "--usb"]
             self.add_log(f"[実行] コマンド呼び出し: {' '.join(cmd)}")
 
             start_time = time.time()
+            last_dhu_output = ""
 
             try:
-                # subprocess.Popen で非同期にDHUを起動
+                # subprocess.Popen で非同期にDHUを起動（補正した環境変数と作業ディレクトリを適用）
                 self.process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     universal_newlines=True,
-                    bufsize=1
+                    bufsize=1,
+                    env=env,
+                    cwd=str(HOME_DIR)
                 )
                 with self._lock:
                     self.status = "RUNNING"
@@ -366,12 +397,17 @@ class DHUManager:
                     for line in self.process.stdout:
                         clean_line = line.strip()
                         if clean_line:
+                            last_dhu_output = clean_line
                             self.add_log(f"[DHU] {clean_line}")
 
                 self.process.wait()
                 exit_code = self.process.returncode
                 elapsed = time.time() - start_time
                 self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
+
+                if exit_code != 0 and last_dhu_output:
+                    with self._lock:
+                        self.last_error = f"DHU終了コード {exit_code}: {last_dhu_output}"
 
             except Exception as e:
                 self.add_log(f"[例外] DHU起動失敗: {e}")
