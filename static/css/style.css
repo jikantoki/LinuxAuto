@@ -1390,18 +1390,6 @@ input:checked + .slider:before {
   margin-top: 0.75rem;
 }
 
-/* タッチ再有効化ボタン (接続中のみ) */
-.touch-fix-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin-top: 1rem;
-}
-.touch-fix-row[hidden] {
-  display: none;
-}
-
 /* Wi-Fi 基本表示: 接続先スマホ */
 .wifi-target {
   display: flex;

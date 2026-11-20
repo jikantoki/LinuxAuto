@@ -59,13 +59,6 @@ ADB_FORWARD_LOCAL_PORT = 5277
 RELAY_LOCAL_PORT = 5277
 # Wi-Fi 接続時、DHU 起動からスマホの応答 (ハンドシェイク) を待つ秒数
 HANDSHAKE_TIMEOUT_SEC = 20
-# タッチ補正: ハンドシェイク成功から「最大化し直し」を行うタイミング (秒)。
-# 映像の表示開始を待つため少し遅らせ、念のため 2 回実行する
-TOUCH_FIX_DELAYS_SEC = (3.0, 10.0)
-# タッチ補正: ハンドシェイクのログが出ない場合でも、DHU 起動からこの秒数で補正を開始する
-TOUCH_FIX_FALLBACK_SEC = 12.0
-# タッチ補正: 最大化を解除してから再最大化するまでの時間 (DHU がサイズ変更を処理する猶予)
-TOUCH_FIX_UNMAX_SEC = 1.0
 # DHU が出力する色付けエスケープシーケンス (例: \x1b[38;5;34m) を除去する正規表現
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9;]+m")
 
@@ -78,6 +71,8 @@ HEADUNIT_INI_PATH = HOME_DIR / ".android" / "headunit.ini"
 # Linux Auto 独自の設定ファイルパス (~/.config/linux-auto/config.json)
 APP_CONFIG_DIR = HOME_DIR / ".config" / "linux-auto"
 APP_CONFIG_PATH = APP_CONFIG_DIR / "config.json"
+# DHU のウィンドウ情報 (タイトル / WM_CLASS)。KDE のウィンドウルールの照合条件に使う
+DHU_WINDOW_INFO_PATH = APP_CONFIG_DIR / "dhu-window.json"
 
 # 静的ファイル（HTML/CSS/JS）が配置されるディレクトリ
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -151,7 +146,7 @@ class ConfigManager:
             "adb_port": 5555,                # 方法2: adb connect 先のポート
             "hu_port": HU_SERVER_PORT,       # ヘッドユニットサーバーのポート
             "direct_transport": "adb_flag",  # 方法1: "adb_flag" (--adb=IP:5277) | "relay" (内蔵リレー)
-            "wifi_touch_fix": True,          # Wi-Fi 接続確立後に DHU ウィンドウを最大化し直してタッチを有効化
+            "kde_focus_rule": True,          # KDE で DHU のウィンドウにフォーカス設定のウィンドウルールを自動登録
         }
 
         if not APP_CONFIG_PATH.exists():
@@ -213,7 +208,7 @@ class ConfigManager:
             clean["hu_port"] = to_port(data["hu_port"], HU_SERVER_PORT)
         if "direct_transport" in data:
             clean["direct_transport"] = "relay" if data["direct_transport"] == "relay" else "adb_flag"
-        for key in ("auto_retry", "wifi_touch_fix"):
+        for key in ("auto_retry", "kde_focus_rule"):
             if key in data:
                 clean[key] = to_bool(data[key])
         return clean
@@ -726,45 +721,18 @@ def find_xauthority(env):
 
 
 # =============================================================================
-# DHU ウィンドウ操作ヘルパー (Wi-Fi 接続時のタッチ不具合の自動回避)
+# DHU ウィンドウ情報の取得ヘルパー (読み取り専用)
 # =============================================================================
 class X11WindowHelper:
     """
-    X11 (XWayland 含む) 上の DHU ウィンドウを、EWMH (_NET_WM_STATE) で最大化/解除します。
-    wmctrl / xdotool 等の外部ツールに頼らず、Python 標準の ctypes から libX11 を直接呼び出します。
-
-    【なぜ必要か】
-    Wi-Fi 接続では DHU のウィンドウが「Waiting for phone...」の段階で開き、ウィンドウマネージャー
-    (KDE 等) によって接続確立前に最大化されます。DHU はこの「接続確立前のサイズ変更」を
-    タッチ座標の計算に反映しないため、最大化されたままだとクリック (タッチ) が反応しません。
-    接続確立後に一度でもサイズが変わると正しく再計算されるため、手動で行っていた
-    「最大化解除 → 再最大化」を接続確立の直後に自動で実行します。
+    X11 (XWayland 含む) 上の DHU ウィンドウの情報 (タイトル・WM_CLASS) を読み取ります。
+    ウィンドウの移動・リサイズ・フォーカス操作は一切行いません。
+    取得した情報は、KDE のウィンドウルール (KWinRuleManager) で DHU のウィンドウを
+    正確に指定するために使います。
+    wmctrl / xprop 等の外部ツールに頼らず、Python 標準の ctypes から libX11 を直接呼び出します。
     """
 
-    CLIENT_MESSAGE = 33
-    SUBSTRUCTURE_NOTIFY_MASK = 1 << 19
-    SUBSTRUCTURE_REDIRECT_MASK = 1 << 20
-    NET_WM_STATE_REMOVE = 0
-    NET_WM_STATE_ADD = 1
-
     _error_handler_ref = None  # GC されないよう保持
-
-    class _XClientMessageEvent(ctypes.Structure):
-        _fields_ = [
-            ("type", ctypes.c_int),
-            ("serial", ctypes.c_ulong),
-            ("send_event", ctypes.c_int),
-            ("display", ctypes.c_void_p),
-            ("window", ctypes.c_ulong),
-            ("message_type", ctypes.c_ulong),
-            ("format", ctypes.c_int),
-            ("data", ctypes.c_long * 5),
-        ]
-
-    class _XEvent(ctypes.Union):
-        pass
-
-    _XEvent._fields_ = [("xclient", _XClientMessageEvent), ("pad", ctypes.c_long * 24)]
 
     def __init__(self, display_name, xauthority=None):
         libname = ctypes.util.find_library("X11") or "libX11.so.6"
@@ -784,10 +752,7 @@ class X11WindowHelper:
             c_ulong_p, c_ulong_p, ctypes.POINTER(ctypes.c_void_p),
         ]
         x.XFree.argtypes = [ctypes.c_void_p]
-        x.XSendEvent.restype = ctypes.c_int
-        x.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.c_void_p]
         x.XFlush.argtypes = [ctypes.c_void_p]
-        x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         x.XCloseDisplay.argtypes = [ctypes.c_void_p]
 
         # 既定の Xlib エラーハンドラーはエラー時にプロセスごと終了してしまうため、
@@ -874,48 +839,175 @@ class X11WindowHelper:
                 by_title.append(w)
         return by_pid or by_title
 
-    def activate(self, window):
-        """ウィンドウをアクティブ (フォーカス) にします (_NET_ACTIVE_WINDOW)。"""
-        ev = X11WindowHelper._XEvent()
-        ev.xclient.type = self.CLIENT_MESSAGE
-        ev.xclient.send_event = 1
-        ev.xclient.display = self.dpy
-        ev.xclient.window = window
-        ev.xclient.message_type = self.atom("_NET_ACTIVE_WINDOW")
-        ev.xclient.format = 32
-        ev.xclient.data[0] = 2  # 送信元: ページャー (フォーカス奪取防止の対象外にする)
-        ev.xclient.data[1] = 0  # CurrentTime
-        self.x.XSendEvent(self.dpy, self.root, 0,
-                          self.SUBSTRUCTURE_REDIRECT_MASK | self.SUBSTRUCTURE_NOTIFY_MASK,
-                          ctypes.byref(ev))
-        self.x.XSync(self.dpy, 0)
-
     def window_title(self, window):
         raw = self._get_property(window, "_NET_WM_NAME") or self._get_property(window, "WM_NAME") or b""
         return raw.decode("utf-8", "replace") if isinstance(raw, bytes) else ""
 
-    def is_maximized(self, window):
-        states = self._get_property(window, "_NET_WM_STATE") or []
-        return (self.atom("_NET_WM_STATE_MAXIMIZED_VERT") in states
-                and self.atom("_NET_WM_STATE_MAXIMIZED_HORZ") in states)
+    def wm_class(self, window):
+        """WM_CLASS を (instance, class) で返します。KDE のウィンドウルールの照合に使われる値です。"""
+        raw = self._get_property(window, "WM_CLASS")
+        if not isinstance(raw, bytes):
+            return "", ""
+        parts = raw.decode("utf-8", "replace").split("\0")
+        return (parts[0] if parts else ""), (parts[1] if len(parts) > 1 else "")
 
-    def set_maximized(self, window, maximize):
-        ev = X11WindowHelper._XEvent()
-        ev.xclient.type = self.CLIENT_MESSAGE
-        ev.xclient.send_event = 1
-        ev.xclient.display = self.dpy
-        ev.xclient.window = window
-        ev.xclient.message_type = self.atom("_NET_WM_STATE")
-        ev.xclient.format = 32
-        ev.xclient.data[0] = self.NET_WM_STATE_ADD if maximize else self.NET_WM_STATE_REMOVE
-        ev.xclient.data[1] = self.atom("_NET_WM_STATE_MAXIMIZED_VERT")
-        ev.xclient.data[2] = self.atom("_NET_WM_STATE_MAXIMIZED_HORZ")
-        ev.xclient.data[3] = 1  # 送信元: 通常のアプリケーション
-        ev.xclient.data[4] = 0
-        self.x.XSendEvent(self.dpy, self.root, 0,
-                          self.SUBSTRUCTURE_REDIRECT_MASK | self.SUBSTRUCTURE_NOTIFY_MASK,
-                          ctypes.byref(ev))
-        self.x.XSync(self.dpy, 0)
+# =============================================================================
+# KDE (KWin) ウィンドウルール管理 (Wi-Fi 接続時にタッチが反応しない問題の対策)
+# =============================================================================
+class KWinRuleManager:
+    """
+    DHU のウィンドウに対して、KDE Plasma のウィンドウルールを自動で登録します。
+    (システム設定 → ウィンドウ管理 → ウィンドウルール で手動作成できるものと同じです)
+
+    【なぜ必要か】
+    KDE Plasma 6 (Wayland) では、DHU のような X11 アプリは XWayland 経由で表示されます。
+    Linux Auto のサービスから起動された DHU のウィンドウは「ユーザー操作で開いたウィンドウ」ではないため、
+    KWin のフォーカス奪取防止の対象になり、見た目はアクティブでも入力 (クリック) が届かない状態で開くことがあります。
+    一度タスクバー等に触れてから戻ると使えるようになるのは、そこで正規のフォーカス切り替えが起きるためです。
+
+    このルールで DHU のウィンドウだけ「フォーカス奪取防止: なし」「フォーカスを受け付ける: はい」を強制し、
+    開いた時点から正しく入力を受け取れるようにします。他のウィンドウやルールには影響しません。
+    """
+
+    RULE_GROUP = "linux-auto-dhu"
+    DESCRIPTION = "Linux Auto: Android Auto (DHU) のフォーカス設定"
+    DEFAULT_TITLE = "Desktop Head Unit"
+    # WM_CLASS がこれらの場合は他のアプリと区別できないため、タイトルも条件に加える
+    GENERIC_CLASSES = {"", "sdl_app", "main", "python3", "java", "wine"}
+
+    # KWin ルールの値: マッチ方法 (1=完全一致, 2=部分一致) / 適用方法 (2=強制)
+    MATCH_EXACT = 1
+    MATCH_SUBSTRING = 2
+    RULE_FORCE = 2
+
+    def __init__(self, env, logger):
+        self.env = env
+        self.log = logger
+        path = env.get("PATH", "")
+        self.write_cmd = shutil.which("kwriteconfig6", path=path) or shutil.which("kwriteconfig5", path=path)
+        self.read_cmd = shutil.which("kreadconfig6", path=path) or shutil.which("kreadconfig5", path=path)
+
+    def is_kde(self):
+        return "KDE" in (self.env.get("XDG_CURRENT_DESKTOP", "") + self.env.get("DESKTOP_SESSION", "")).upper()
+
+    def available(self):
+        return self.is_kde() and bool(self.write_cmd and self.read_cmd)
+
+    def _run(self, cmd):
+        try:
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                               universal_newlines=True, timeout=10, env=self.env)
+            return p.returncode, p.stdout.strip()
+        except Exception as e:
+            return 1, str(e)
+
+    def _read(self, group, key):
+        rc, out = self._run([self.read_cmd, "--file", "kwinrulesrc", "--group", group, "--key", key])
+        return out if rc == 0 else ""
+
+    def _write(self, group, key, value):
+        return self._run([self.write_cmd, "--file", "kwinrulesrc", "--group", group, "--key", key, str(value)])[0] == 0
+
+    def _delete(self, group, key):
+        self._run([self.write_cmd, "--file", "kwinrulesrc", "--group", group, "--key", key, "--delete"])
+
+    @staticmethod
+    def load_window_info():
+        try:
+            with open(DHU_WINDOW_INFO_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def save_window_info(info):
+        APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(DHU_WINDOW_INFO_PATH, "w", encoding="utf-8") as f:
+            json.dump(info, f, indent=2, ensure_ascii=False)
+
+    def desired_settings(self, info):
+        """登録するルールの内容 (キー: 値)。None のキーはルールから削除します。"""
+        settings = {
+            "Description": self.DESCRIPTION,
+            "fsplevel": 0,                     # フォーカス奪取防止: なし
+            "fsplevelrule": self.RULE_FORCE,
+            "acceptfocus": "true",             # フォーカスを受け付ける: はい
+            "acceptfocusrule": self.RULE_FORCE,
+            "wmclass": None, "wmclassmatch": None, "wmclasscomplete": None,
+            "title": None, "titlematch": None,
+        }
+        wm_class = (info.get("wm_class") or "").strip()
+        title = (info.get("title") or "").strip()
+        if wm_class:
+            settings.update({"wmclass": wm_class, "wmclassmatch": self.MATCH_EXACT, "wmclasscomplete": "false"})
+            if wm_class.lower() in self.GENERIC_CLASSES and title:
+                settings.update({"title": title, "titlematch": self.MATCH_SUBSTRING})
+        else:
+            # まだ DHU のウィンドウを確認していない場合はタイトルで指定する
+            settings.update({"title": self.DEFAULT_TITLE, "titlematch": self.MATCH_SUBSTRING})
+        return settings
+
+    def ensure_rule(self, info=None):
+        """ルールが無い・内容が古い場合に登録 (更新) し、KWin に再読み込みさせます。戻り値: 変更したか。"""
+        if not self.available():
+            return False
+        info = info if info is not None else self.load_window_info()
+        settings = self.desired_settings(info)
+
+        rules = [r for r in self._read("General", "rules").split(",") if r]
+        registered = self.RULE_GROUP in rules
+        current = {k: self._read(self.RULE_GROUP, k) for k in settings}
+        wanted = {k: ("" if v is None else str(v)) for k, v in settings.items()}
+        if registered and current == wanted:
+            return False
+
+        for key, value in settings.items():
+            if value is None:
+                self._delete(self.RULE_GROUP, key)
+            elif not self._write(self.RULE_GROUP, key, value):
+                self.log(f"[KDE] ウィンドウルールの書き込みに失敗しました ({key})")
+                return False
+        if not registered:
+            rules.append(self.RULE_GROUP)
+            self._write("General", "rules", ",".join(rules))
+            self._write("General", "count", len(rules))
+        self.reconfigure_kwin()
+        return True
+
+    def remove_rule(self):
+        """ルールを削除します (kde_focus_rule を無効にした場合)。"""
+        if not self.available():
+            return False
+        rules = [r for r in self._read("General", "rules").split(",") if r]
+        if self.RULE_GROUP not in rules:
+            return False
+        rules.remove(self.RULE_GROUP)
+        self._write("General", "rules", ",".join(rules))
+        self._write("General", "count", len(rules))
+        self._run([self.write_cmd, "--file", "kwinrulesrc", "--group", self.RULE_GROUP, "--key", "Description", "--delete"])
+        for key in self.desired_settings({}):
+            self._delete(self.RULE_GROUP, key)
+        self.reconfigure_kwin()
+        return True
+
+    def reconfigure_kwin(self):
+        """KWin にウィンドウルールを再読み込みさせます (D-Bus)。"""
+        path = self.env.get("PATH", "")
+        candidates = []
+        for q in ("qdbus6", "qdbus-qt6", "qdbus"):
+            if shutil.which(q, path=path):
+                candidates.append([q, "org.kde.KWin", "/KWin", "reconfigure"])
+        if shutil.which("dbus-send", path=path):
+            candidates.append(["dbus-send", "--session", "--type=method_call", "--dest=org.kde.KWin",
+                               "/KWin", "org.kde.KWin.reconfigure"])
+        if shutil.which("gdbus", path=path):
+            candidates.append(["gdbus", "call", "--session", "--dest", "org.kde.KWin", "--object-path", "/KWin",
+                               "--method", "org.kde.KWin.reconfigure"])
+        for cmd in candidates:
+            if self._run(cmd)[0] == 0:
+                return True
+        self.log("[KDE] KWin の再読み込みに失敗しました (ログアウト→ログイン後に反映されます)")
+        return False
 
 
 # =============================================================================
@@ -948,9 +1040,7 @@ class DHUManager:
         self.retry_countdown = 0      # 再接続カウントダウン（残り秒数）
         self.monitor_thread = None
         self.relay = None             # 方法1 (リレー経由) 用の TCPRelay
-        self.child_env = None         # DHU に渡した環境変数 (タッチ補正で DISPLAY 等を参照)
-        self._touch_fix_started = None  # タッチ自動補正を開始した DHU プロセス
-        self._touch_fix_lock = threading.Lock()  # 手動ボタンと自動補正が同時に動かないようにする
+        self.child_env = None         # DHU に渡した環境変数 (ウィンドウ確認で DISPLAY 等を参照)
         self.connection = {}          # 現在の接続方式 (画面表示用)
 
     def add_log(self, message):
@@ -1099,91 +1189,70 @@ class DHUManager:
                 "デスクトップにログインしてから接続してください。"
             )
 
-    def remaximize_dhu_window(self, reason="手動"):
-        """
-        【Wi-Fi 接続時のタッチ不具合の回避】
-        DHU のウィンドウが最大化されていれば「最大化解除 → (1秒待機) → 再最大化 → アクティブ化」を行い、
-        DHU にウィンドウサイズを再計算させてタッチ (クリック) を有効にします。
-        画面の「タッチを再有効化」ボタンと、接続確立後の自動補正の両方から呼ばれます。
-        戻り値: (成功したか, メッセージ)
-        """
-        with self._touch_fix_lock:
-            return self._remaximize_locked(reason)
+    # -------------------------------------------------------------------------
+    # KDE ウィンドウルール (タッチが反応しない問題の対策)
+    # -------------------------------------------------------------------------
+    def _setup_kde_rule(self, env, config):
+        """DHU 起動前に、KDE のウィンドウルールを登録 (または削除) します。"""
+        kwin = KWinRuleManager(env, self.add_log)
+        if not kwin.is_kde():
+            return
+        if not config.get("kde_focus_rule", True):
+            if kwin.remove_rule():
+                self.add_log("[KDE] 設定により、DHU 用のウィンドウルールを削除しました")
+            return
+        if not kwin.available():
+            self.add_log("[KDE] kwriteconfig6 / kreadconfig6 が見つからないため、ウィンドウルールを登録できません")
+            return
+        if kwin.ensure_rule():
+            self.add_log("[KDE] DHU 用のウィンドウルールを登録しました (フォーカス奪取防止: なし / フォーカスを受け付ける: はい)")
 
-    def _remaximize_locked(self, reason):
-        with self._lock:
-            proc = self.process
-            env = dict(self.child_env or os.environ)
-        if proc is None or proc.poll() is not None:
-            return False, "DHU が起動していません"
-
+    def _inspect_dhu_window(self, proc, env, config):
+        """
+        DHU のウィンドウを (読み取りのみで) 確認し、タイトルと WM_CLASS をログに出します。
+        KDE では、ウィンドウルールの照合条件をこの実際の値に合わせて更新します。
+        ウィンドウの移動・リサイズ・フォーカス操作は行いません。
+        """
         display = env.get("DISPLAY")
         if not display:
-            msg = "DISPLAY が無いため実行できません (X11 / XWayland 以外の環境)"
-            self.add_log(f"[タッチ補正] {msg}")
-            return False, msg
-
-        xauth = find_xauthority(env)
+            return
         try:
-            x11 = X11WindowHelper(display, xauth)
+            x11 = X11WindowHelper(display, find_xauthority(env))
         except Exception as e:
-            msg = f"X11 ({display}, 認証ファイル: {xauth or 'なし'}) に接続できません: {e}"
-            self.add_log(f"[タッチ補正] {msg}")
-            return False, msg
-
+            self.add_log(f"[KDE] DHU のウィンドウ情報を取得できません (X11 に接続できません: {e})")
+            return
         try:
             windows = []
-            for _ in range(20):  # ウィンドウが現れるまで最大 10 秒待つ
+            for _ in range(30):  # 最大 15 秒待つ
                 if proc.poll() is not None or self.user_stopped:
-                    return False, "DHU が終了しました"
+                    return
                 windows = x11.find_dhu_windows(proc.pid)
                 if windows:
                     break
                 time.sleep(0.5)
             if not windows:
-                msg = f"DHU のウィンドウが見つかりません (PID: {proc.pid}, DISPLAY: {display})"
-                self.add_log(f"[タッチ補正] {msg}")
-                return False, msg
-
-            done = []
-            for w in windows:
-                title = x11.window_title(w) or hex(w)
-                if not x11.is_maximized(w):
-                    self.add_log(f"[タッチ補正] ({reason}) 「{title}」は最大化されていないため、アクティブ化のみ行います")
-                    x11.activate(w)
-                    continue
-                x11.set_maximized(w, False)
-                time.sleep(TOUCH_FIX_UNMAX_SEC)
-                x11.set_maximized(w, True)
-                time.sleep(0.3)
-                x11.activate(w)
-                state = "最大化に復帰" if x11.is_maximized(w) else "最大化に戻せませんでした"
-                self.add_log(f"[タッチ補正] ({reason}) 「{title}」の最大化を解除→再最大化しました ({state})")
-                done.append(title)
-            return True, ("ウィンドウを最大化し直しました" if done else "最大化されていないため、アクティブ化のみ行いました")
+                self.add_log("[KDE] DHU のウィンドウが見つかりませんでした (ウィンドウルールはタイトル条件のまま使用します)")
+                return
+            w = windows[0]
+            title = x11.window_title(w)
+            instance, wm_class = x11.wm_class(w)
+            self.add_log(f"[KDE] DHU のウィンドウを確認: タイトル「{title}」 WM_CLASS={instance}/{wm_class}")
         except Exception as e:
-            self.add_log(f"[タッチ補正] 失敗しました: {e}")
-            return False, str(e)
+            self.add_log(f"[KDE] DHU のウィンドウ情報の取得に失敗しました: {e}")
+            return
         finally:
             x11.close()
 
-    def _start_auto_touch_fix(self, proc, reason):
-        """接続確立後のタッチ自動補正を (DHU プロセスごとに 1 回だけ) 開始します。"""
-        with self._lock:
-            if self._touch_fix_started is proc:
-                return
-            self._touch_fix_started = proc
+        info = {"title": title, "wm_class": wm_class, "wm_instance": instance}
+        old = KWinRuleManager.load_window_info()
+        if {k: old.get(k) for k in info} != info:
+            KWinRuleManager.save_window_info(info)
 
-        def worker():
-            self.add_log(f"[タッチ補正] {reason}。{'秒後・'.join(str(int(d)) for d in TOUCH_FIX_DELAYS_SEC)}秒後にウィンドウを最大化し直します")
-            base = time.monotonic()
-            for delay in TOUCH_FIX_DELAYS_SEC:
-                time.sleep(max(0.0, base + delay - time.monotonic()))
-                if proc.poll() is not None or self.user_stopped or self.process is not proc:
-                    return
-                self.remaximize_dhu_window(reason=f"自動 {int(delay)}秒後")
-
-        threading.Thread(target=worker, daemon=True).start()
+        kwin = KWinRuleManager(env, self.add_log)
+        if config.get("kde_focus_rule", True) and kwin.available():
+            if kwin.ensure_rule(info):
+                self.add_log(f"[KDE] ウィンドウルールの対象を DHU のウィンドウ (WM_CLASS={wm_class}) に合わせて更新しました。"
+                             "次回の接続から開いた時点で適用されます")
 
     def _warn_no_handshake(self, proc, handshake, config):
         """DHU 起動後、スマホからの応答がないまま一定時間経過した場合の案内。"""
@@ -1333,6 +1402,7 @@ class DHUManager:
         self._apply_session_env(env)
         with self._lock:
             self.child_env = env
+        self._setup_kde_rule(env, config)
         dhu_work_dir = str(Path(dhu_path).resolve().parent)
 
         while not self.user_stopped:
@@ -1375,6 +1445,9 @@ class DHUManager:
                         self.last_error = ""
 
                     self.add_log(f"[接続] desktop-head-unit を起動しました (PID: {proc.pid})")
+                    threading.Thread(
+                        target=self._inspect_dhu_window, args=(proc, env, config), daemon=True
+                    ).start()
 
                     # ---------------------------------------------------------
                     # 【ハンドシェイク監視】(Wi-Fi のみ)
@@ -1384,14 +1457,6 @@ class DHUManager:
                     # ---------------------------------------------------------
                     handshake = {"ok": False}
                     watchdog = None
-                    fallback_fix = None
-                    if not is_usb and config.get("wifi_touch_fix", True):
-                        fallback_fix = threading.Timer(
-                            TOUCH_FIX_FALLBACK_SEC, self._start_auto_touch_fix,
-                            args=(proc, f"起動から{int(TOUCH_FIX_FALLBACK_SEC)}秒経過しました (接続確立のログは未検出)"),
-                        )
-                        fallback_fix.daemon = True
-                        fallback_fix.start()
                     if not is_usb:
                         watchdog = threading.Timer(
                             HANDSHAKE_TIMEOUT_SEC, self._warn_no_handshake, args=(proc, handshake, config)
@@ -1412,13 +1477,9 @@ class DHUManager:
                                         self.connection.pop("warning", None)
                                     if not is_usb:
                                         self.add_log("[接続] スマホとのハンドシェイクに成功しました")
-                                        if config.get("wifi_touch_fix", True):
-                                            self._start_auto_touch_fix(proc, "接続確立を検知しました")
 
                     if watchdog is not None:
                         watchdog.cancel()
-                    if fallback_fix is not None:
-                        fallback_fix.cancel()
 
                     proc.wait()
                     if proc.stdin is not None:
@@ -1664,12 +1725,6 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
                 "headunit_ini": saved_ini,
                 "app_config": saved_app,
             })
-            return
-
-        # API: タッチの再有効化 (DHU ウィンドウを最大化し直す)
-        if path == "/api/touch-fix":
-            ok, msg = dhu_manager.remaximize_dhu_window(reason="手動")
-            self._send_json(200, {"success": ok, "message": msg})
             return
 
         # API: スマホ (ヘッドユニットサーバー / ADB) への TCP 疎通確認

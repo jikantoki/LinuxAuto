@@ -167,27 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // タッチ再有効化ボタン (DHU 実行中のみ表示)
-  const touchFixRow = document.getElementById('touch-fix-row')
-  const btnTouchFix = document.getElementById('btn-touch-fix')
-  btnTouchFix.addEventListener('click', async () => {
-    btnTouchFix.disabled = true
-    const original = btnTouchFix.textContent
-    btnTouchFix.textContent = '実行中...'
-    const res = await apiRequest('/api/touch-fix', 'POST')
-    btnTouchFix.textContent = original
-    btnTouchFix.disabled = false
-    showToast(
-      res.success
-        ? `${res.message}。DHU の画面をクリックして確認してください`
-        : `タッチ再有効化に失敗: ${res.message || res.error}`,
-      4000,
-    )
-  })
-
   function renderStatusUI(data) {
-    touchFixRow.hidden = data.status !== 'RUNNING'
-
     setConnectionLocked(
       ['RUNNING', 'RECONNECTING', 'STARTING'].includes(data.status),
     )
@@ -315,7 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
         line.includes('[ADB]') ||
         line.includes('[リレー]') ||
         line.includes('[疎通確認]') ||
-        line.includes('[タッチ補正]')
+        line.includes('[KDE]')
       ) {
         div.style.color = '#93c5fd'
       } else if (line.includes('[接続]')) {
