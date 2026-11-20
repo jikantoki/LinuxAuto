@@ -37,6 +37,8 @@ import argparse
 import threading
 import subprocess
 import configparser
+import ctypes
+import ctypes.util
 import webbrowser
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -56,6 +58,8 @@ ADB_FORWARD_LOCAL_PORT = 5277
 RELAY_LOCAL_PORT = 5277
 # Wi-Fi 接続時、DHU 起動からスマホの応答 (ハンドシェイク) を待つ秒数
 HANDSHAKE_TIMEOUT_SEC = 20
+# タッチ補正: ハンドシェイク成功から最大化し直すまでの待ち時間 (映像の表示開始を待つ)
+TOUCH_FIX_DELAY_SEC = 1.5
 # DHU が出力する色付けエスケープシーケンス (例: \x1b[38;5;34m) を除去する正規表現
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9;]+m")
 
@@ -141,6 +145,7 @@ class ConfigManager:
             "adb_port": 5555,                # 方法2: adb connect 先のポート
             "hu_port": HU_SERVER_PORT,       # ヘッドユニットサーバーのポート
             "direct_transport": "adb_flag",  # 方法1: "adb_flag" (--adb=IP:5277) | "relay" (内蔵リレー)
+            "wifi_touch_fix": True,          # Wi-Fi 接続確立後に DHU ウィンドウを最大化し直してタッチを有効化
         }
 
         if not APP_CONFIG_PATH.exists():
@@ -202,7 +207,7 @@ class ConfigManager:
             clean["hu_port"] = to_port(data["hu_port"], HU_SERVER_PORT)
         if "direct_transport" in data:
             clean["direct_transport"] = "relay" if data["direct_transport"] == "relay" else "adb_flag"
-        for key in ("auto_retry",):
+        for key in ("auto_retry", "wifi_touch_fix"):
             if key in data:
                 clean[key] = to_bool(data[key])
         return clean
@@ -676,6 +681,163 @@ class TCPRelay:
 
 
 # =============================================================================
+# DHU ウィンドウ操作ヘルパー (Wi-Fi 接続時のタッチ不具合の自動回避)
+# =============================================================================
+class X11WindowHelper:
+    """
+    X11 (XWayland 含む) 上の DHU ウィンドウを、EWMH (_NET_WM_STATE) で最大化/解除します。
+    wmctrl / xdotool 等の外部ツールに頼らず、Python 標準の ctypes から libX11 を直接呼び出します。
+
+    【なぜ必要か】
+    Wi-Fi 接続では DHU のウィンドウが「Waiting for phone...」の段階で開き、ウィンドウマネージャー
+    (KDE 等) によって接続確立前に最大化されます。DHU はこの「接続確立前のサイズ変更」を
+    タッチ座標の計算に反映しないため、最大化されたままだとクリック (タッチ) が反応しません。
+    接続確立後に一度でもサイズが変わると正しく再計算されるため、手動で行っていた
+    「最大化解除 → 再最大化」を接続確立の直後に自動で実行します。
+    """
+
+    CLIENT_MESSAGE = 33
+    SUBSTRUCTURE_NOTIFY_MASK = 1 << 19
+    SUBSTRUCTURE_REDIRECT_MASK = 1 << 20
+    NET_WM_STATE_REMOVE = 0
+    NET_WM_STATE_ADD = 1
+
+    _error_handler_ref = None  # GC されないよう保持
+
+    class _XClientMessageEvent(ctypes.Structure):
+        _fields_ = [
+            ("type", ctypes.c_int),
+            ("serial", ctypes.c_ulong),
+            ("send_event", ctypes.c_int),
+            ("display", ctypes.c_void_p),
+            ("window", ctypes.c_ulong),
+            ("message_type", ctypes.c_ulong),
+            ("format", ctypes.c_int),
+            ("data", ctypes.c_long * 5),
+        ]
+
+    class _XEvent(ctypes.Union):
+        pass
+
+    _XEvent._fields_ = [("xclient", _XClientMessageEvent), ("pad", ctypes.c_long * 24)]
+
+    def __init__(self, display_name, xauthority=None):
+        libname = ctypes.util.find_library("X11") or "libX11.so.6"
+        x = ctypes.CDLL(libname)
+        c_ulong_p = ctypes.POINTER(ctypes.c_ulong)
+
+        x.XOpenDisplay.restype = ctypes.c_void_p
+        x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x.XDefaultRootWindow.restype = ctypes.c_ulong
+        x.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        x.XInternAtom.restype = ctypes.c_ulong
+        x.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x.XGetWindowProperty.restype = ctypes.c_int
+        x.XGetWindowProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_long, ctypes.c_long,
+            ctypes.c_int, ctypes.c_ulong, c_ulong_p, ctypes.POINTER(ctypes.c_int),
+            c_ulong_p, c_ulong_p, ctypes.POINTER(ctypes.c_void_p),
+        ]
+        x.XFree.argtypes = [ctypes.c_void_p]
+        x.XSendEvent.restype = ctypes.c_int
+        x.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.c_void_p]
+        x.XFlush.argtypes = [ctypes.c_void_p]
+        x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+        # 既定の Xlib エラーハンドラーはエラー時にプロセスごと終了してしまうため、
+        # 「操作中に DHU のウィンドウが閉じられた」等のエラーを無視するハンドラーに差し替える
+        if X11WindowHelper._error_handler_ref is None:
+            handler_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+            X11WindowHelper._error_handler_ref = handler_type(lambda dpy, err: 0)
+            x.XSetErrorHandler.argtypes = [handler_type]
+            x.XSetErrorHandler(X11WindowHelper._error_handler_ref)
+
+        # サービス起動時はサーバー自身の環境変数に XAUTHORITY が無いため、セッションの値を使う
+        if xauthority:
+            os.environ["XAUTHORITY"] = xauthority
+
+        dpy = x.XOpenDisplay(display_name.encode() if display_name else None)
+        if not dpy:
+            raise OSError(f"X ディスプレイ {display_name or '(未設定)'} に接続できません")
+        self.x = x
+        self.dpy = dpy
+        self.root = x.XDefaultRootWindow(dpy)
+        self._atoms = {}
+
+    def close(self):
+        if self.dpy:
+            self.x.XCloseDisplay(self.dpy)
+            self.dpy = None
+
+    def atom(self, name):
+        if name not in self._atoms:
+            self._atoms[name] = self.x.XInternAtom(self.dpy, name.encode(), 0)
+        return self._atoms[name]
+
+    def _get_property(self, window, name):
+        """プロパティを取得します。format=32 なら整数のリスト、8 ならバイト列を返します。"""
+        actual_type = ctypes.c_ulong()
+        actual_format = ctypes.c_int()
+        nitems = ctypes.c_ulong()
+        bytes_after = ctypes.c_ulong()
+        prop = ctypes.c_void_p()
+        status = self.x.XGetWindowProperty(
+            self.dpy, window, self.atom(name), 0, 4096, 0, 0,  # 0 = AnyPropertyType
+            ctypes.byref(actual_type), ctypes.byref(actual_format),
+            ctypes.byref(nitems), ctypes.byref(bytes_after), ctypes.byref(prop),
+        )
+        if status != 0 or not prop.value:
+            return None
+        try:
+            if actual_format.value == 32:
+                arr = ctypes.cast(prop, ctypes.POINTER(ctypes.c_ulong))
+                return [arr[i] for i in range(nitems.value)]
+            if actual_format.value == 8:
+                return ctypes.string_at(prop, nitems.value)
+            return None
+        finally:
+            self.x.XFree(prop)
+
+    def find_windows_by_pid(self, pid):
+        """_NET_WM_PID が pid と一致するトップレベルウィンドウの一覧。"""
+        clients = self._get_property(self.root, "_NET_CLIENT_LIST") or []
+        result = []
+        for w in clients:
+            pids = self._get_property(w, "_NET_WM_PID")
+            if pids and pids[0] == pid:
+                result.append(w)
+        return result
+
+    def window_title(self, window):
+        raw = self._get_property(window, "_NET_WM_NAME") or self._get_property(window, "WM_NAME") or b""
+        return raw.decode("utf-8", "replace") if isinstance(raw, bytes) else ""
+
+    def is_maximized(self, window):
+        states = self._get_property(window, "_NET_WM_STATE") or []
+        return (self.atom("_NET_WM_STATE_MAXIMIZED_VERT") in states
+                and self.atom("_NET_WM_STATE_MAXIMIZED_HORZ") in states)
+
+    def set_maximized(self, window, maximize):
+        ev = X11WindowHelper._XEvent()
+        ev.xclient.type = self.CLIENT_MESSAGE
+        ev.xclient.send_event = 1
+        ev.xclient.display = self.dpy
+        ev.xclient.window = window
+        ev.xclient.message_type = self.atom("_NET_WM_STATE")
+        ev.xclient.format = 32
+        ev.xclient.data[0] = self.NET_WM_STATE_ADD if maximize else self.NET_WM_STATE_REMOVE
+        ev.xclient.data[1] = self.atom("_NET_WM_STATE_MAXIMIZED_VERT")
+        ev.xclient.data[2] = self.atom("_NET_WM_STATE_MAXIMIZED_HORZ")
+        ev.xclient.data[3] = 1  # 送信元: 通常のアプリケーション
+        ev.xclient.data[4] = 0
+        self.x.XSendEvent(self.dpy, self.root, 0,
+                          self.SUBSTRUCTURE_REDIRECT_MASK | self.SUBSTRUCTURE_NOTIFY_MASK,
+                          ctypes.byref(ev))
+        self.x.XSync(self.dpy, 0)
+
+
+# =============================================================================
 # DHUプロセス＆再接続監視コントローラー (Process Manager)
 # =============================================================================
 class DHUManager:
@@ -852,6 +1014,54 @@ class DHUManager:
                 "[警告] デスクトップセッション (DISPLAY / WAYLAND_DISPLAY) が見つかりません。"
                 "デスクトップにログインしてから接続してください。"
             )
+
+    def _fix_touch_by_remaximize(self, proc, env):
+        """
+        【Wi-Fi 接続時のタッチ不具合の自動回避】
+        接続確立後、DHU のウィンドウが最大化されていれば「最大化解除 → 再最大化」を行い、
+        DHU にウィンドウサイズを再計算させてタッチ (クリック) を有効にします。
+        詳細は X11WindowHelper の説明を参照してください。
+        """
+        time.sleep(TOUCH_FIX_DELAY_SEC)
+        display = env.get("DISPLAY")
+        if not display:
+            self.add_log("[タッチ補正] DISPLAY が無いため実行できません (X11 / XWayland 以外の環境)")
+            return
+
+        try:
+            x11 = X11WindowHelper(display, env.get("XAUTHORITY"))
+        except Exception as e:
+            self.add_log(f"[タッチ補正] X11 に接続できないためスキップします: {e}")
+            return
+
+        try:
+            windows = []
+            for _ in range(20):  # ウィンドウが現れるまで最大 10 秒待つ
+                if proc.poll() is not None or self.user_stopped:
+                    return
+                windows = x11.find_windows_by_pid(proc.pid)
+                if windows:
+                    break
+                time.sleep(0.5)
+            if not windows:
+                self.add_log("[タッチ補正] DHU のウィンドウが見つからないためスキップします")
+                return
+
+            for w in windows:
+                title = x11.window_title(w) or hex(w)
+                if not x11.is_maximized(w):
+                    self.add_log(f"[タッチ補正] 「{title}」は最大化されていないため補正不要です")
+                    continue
+                x11.set_maximized(w, False)
+                time.sleep(0.4)
+                x11.set_maximized(w, True)
+                time.sleep(0.3)
+                state = "最大化に復帰" if x11.is_maximized(w) else "最大化に戻せませんでした"
+                self.add_log(f"[タッチ補正] 「{title}」の最大化を解除→再最大化しました ({state})")
+        except Exception as e:
+            self.add_log(f"[タッチ補正] 失敗しました: {e}")
+        finally:
+            x11.close()
 
     def _warn_no_handshake(self, proc, handshake, config):
         """DHU 起動後、スマホからの応答がないまま一定時間経過した場合の案内。"""
@@ -1070,6 +1280,12 @@ class DHUManager:
                                         self.connection.pop("warning", None)
                                     if not is_usb:
                                         self.add_log("[接続] スマホとのハンドシェイクに成功しました")
+                                        if config.get("wifi_touch_fix", True):
+                                            threading.Thread(
+                                                target=self._fix_touch_by_remaximize,
+                                                args=(proc, env),
+                                                daemon=True,
+                                            ).start()
 
                     if watchdog is not None:
                         watchdog.cancel()
