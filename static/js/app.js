@@ -188,9 +188,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 ring.classList.add("running");
                 badgeLabel.textContent = `接続中 (PID: ${data.pid})`;
                 elements.mainStatusTitle.textContent = "Android Auto 接続中";
-                elements.mainStatusDesc.textContent = activeConn.label
-                    ? `${activeConn.label}${activeConn.target ? " / " + activeConn.target : ""} で実行中 (PID: ${data.pid})`
-                    : `desktop-head-unit が正常に実行されています (PID: ${data.pid})`;
+                elements.mainStatusDesc.textContent = activeConn.warning
+                    ? `⚠️ ${activeConn.warning}`
+                    : activeConn.label
+                        ? `${activeConn.label}${activeConn.target ? " / " + activeConn.target : ""} で実行中 (PID: ${data.pid})`
+                        : `desktop-head-unit が正常に実行されています (PID: ${data.pid})`;
+                if (activeConn.warning) {
+                    ring.classList.add("reconnecting");
+                    badgeLabel.textContent = "スマホの応答待ち";
+                }
                 elements.btnStart.disabled = true;
                 elements.btnStop.disabled = false;
                 elements.reconnectBanner.style.display = "none";
@@ -264,7 +270,7 @@ document.addEventListener("DOMContentLoaded", () => {
             div.textContent = line;
             if (line.includes("[エラー]") || line.includes("[例外]")) {
                 div.style.color = "#f87171";
-            } else if (line.includes("[検知]") || line.includes("[再接続]")) {
+            } else if (line.includes("[検知]") || line.includes("[再接続]") || line.includes("[警告]")) {
                 div.style.color = "#fbbf24";
             } else if (line.includes("[Wi-Fi]") || line.includes("[ADB]") || line.includes("[リレー]") || line.includes("[疎通確認]")) {
                 div.style.color = "#93c5fd";
@@ -523,7 +529,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const res = await apiRequest("/api/probe", "POST", { host: f.phone_ip_auto ? "" : f.phone_ip, port: f.hu_port });
         btn.disabled = conn.locked;
         showResult(!!res.ok, res.ok
-            ? `${res.message}。ヘッドユニットサーバーが応答しています。「接続開始」で接続できます。`
+            ? `${res.message}。ヘッドユニットサーバーが待ち受けています。※ この確認で接続を1回使うため、「接続開始」後に Waiting for phone... のまま進まない場合は、スマホでヘッドユニットサーバーを停止→起動し直してから接続してください。`
             : `${res.message || res.error}。スマホで「ヘッドユニットサーバーを起動」しているか確認してください。`);
     });
 

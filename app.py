@@ -24,6 +24,7 @@ pip等によるサードパーティ製ライブラリを一切使わず、Pytho
 """
 
 import os
+import re
 import sys
 import errno
 import json
@@ -53,6 +54,10 @@ HU_SERVER_PORT = 5277
 ADB_FORWARD_LOCAL_PORT = 5277
 # 方法2 (内蔵リレー経由) で PC 側に開くポート
 RELAY_LOCAL_PORT = 5277
+# Wi-Fi 接続時、DHU 起動からスマホの応答 (ハンドシェイク) を待つ秒数
+HANDSHAKE_TIMEOUT_SEC = 20
+# DHU が出力する色付けエスケープシーケンス (例: \x1b[38;5;34m) を除去する正規表現
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9;]+m")
 
 # ユーザーのホームディレクトリの取得（Node.jsの os.homedir() や PHPの $_SERVER['HOME'] に相当）
 HOME_DIR = Path.home()
@@ -848,6 +853,21 @@ class DHUManager:
                 "デスクトップにログインしてから接続してください。"
             )
 
+    def _warn_no_handshake(self, proc, handshake, config):
+        """DHU 起動後、スマホからの応答がないまま一定時間経過した場合の案内。"""
+        if handshake["ok"] or proc.poll() is not None or self.user_stopped:
+            return
+        if config.get("wifi_mode") == "adb":
+            msg = ("スマホから応答がありません (Waiting for phone...)。スマホのロックを解除し、Android Auto の確認画面が"
+                   "出ていれば許可してください。改善しない場合は、スマホでヘッドユニットサーバーを一度停止→起動し直してください。")
+        else:
+            msg = ("スマホから応答がありません (Waiting for phone...)。TCP 接続はできていますが、ヘッドユニットサーバーが"
+                   "応答していません。スマホのロック解除・確認画面の許可を行い、ヘッドユニットサーバーを停止→起動し直してください。"
+                   "それでも進まない場合、この端末では Wi-Fi 直結が使えない可能性があるため、方法1 (ADB) をお試しください。")
+        self.add_log(f"[警告] {msg}")
+        with self._lock:
+            self.connection["warning"] = msg
+
     # -------------------------------------------------------------------------
     # 接続方式ごとの準備 (毎回の接続試行の直前に実行)
     # -------------------------------------------------------------------------
@@ -927,13 +947,15 @@ class DHUManager:
         return [dhu_path], None
 
     def _prepare_wifi_direct(self, dhu_path, config, env, host, hu_port):
-        """方法2: ヘッドユニットサーバー (スマホ:5277) へ直接接続"""
-        ok, msg = NetworkHelper.probe_tcp(host, hu_port)
-        self.add_log(f"[疎通確認] {msg}")
-        if not ok:
-            return None, (f"{msg}。スマホの Android Auto 開発者設定で「ヘッドユニットサーバーを起動」しているか確認してください。"
-                          "改善しない場合、お使いの端末ではヘッドユニットサーバーが Wi-Fi からの接続を受け付けていない可能性があるため、"
-                          "方法1 (ADB) をお試しください。")
+        """
+        方法2: ヘッドユニットサーバー (スマホ:5277) へ直接接続
+
+        ※ 接続直前の自動疎通確認 (TCP 接続して即切断) は行いません。
+           ヘッドユニットサーバーは 1 本の接続を 1 セッションとして扱うため、確認用の接続が
+           セッションを消費し、直後の DHU の接続に応答しなくなる (Waiting for phone... で停止する)
+           可能性があるためです。接続できない場合は DHU 自体が終了し、10 秒後に自動で再試行します。
+        """
+        self.add_log(f"[Wi-Fi] ヘッドユニットサーバー {host}:{hu_port} へ直接接続します")
 
         transport = config.get("direct_transport", "adb_flag")
         if transport == "relay":
@@ -1020,13 +1042,37 @@ class DHUManager:
 
                     self.add_log(f"[接続] desktop-head-unit を起動しました (PID: {proc.pid})")
 
+                    # ---------------------------------------------------------
+                    # 【ハンドシェイク監視】(Wi-Fi のみ)
+                    # TCP 接続できてもスマホが応答しないと、DHU は「Waiting for phone...」のまま
+                    # 終了もせず止まってしまいます。一定時間内に "Phone reported protocol version"
+                    # (スマホからの応答) が出なければ、原因と対処をログと画面に表示します。
+                    # ---------------------------------------------------------
+                    handshake = {"ok": False}
+                    watchdog = None
+                    if not is_usb:
+                        watchdog = threading.Timer(
+                            HANDSHAKE_TIMEOUT_SEC, self._warn_no_handshake, args=(proc, handshake, config)
+                        )
+                        watchdog.daemon = True
+                        watchdog.start()
+
                     # 出力ログのリアルタイム読み取り
                     if proc.stdout:
                         for line in proc.stdout:
-                            clean_line = line.strip()
+                            clean_line = ANSI_ESCAPE_RE.sub("", line).strip()
                             if clean_line:
                                 last_dhu_output = clean_line
                                 self.add_log(f"[DHU] {clean_line}")
+                                if "Phone reported protocol version" in clean_line and not handshake["ok"]:
+                                    handshake["ok"] = True
+                                    with self._lock:
+                                        self.connection.pop("warning", None)
+                                    if not is_usb:
+                                        self.add_log("[接続] スマホとのハンドシェイクに成功しました")
+
+                    if watchdog is not None:
+                        watchdog.cancel()
 
                     proc.wait()
                     if proc.stdin is not None:
