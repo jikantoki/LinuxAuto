@@ -86,8 +86,164 @@
             <section id="tab-main" class="tab-pane active">
                 <header class="pane-header">
                     <h2>Android Auto 接続</h2>
-                    <p class="subtitle">USB接続されたスマートフォンと車載エミュレーター(DHU)をワンクリックで起動します</p>
+                    <p class="subtitle">接続方式（USB / Wi-Fi）を選んで、スマートフォンと車載エミュレーター(DHU)をワンクリックで接続します</p>
                 </header>
+
+                <!-- ===================================================== -->
+                <!-- 接続方式の選択 (USB接続 / Wi-Fi接続) -->
+                <!-- ===================================================== -->
+                <div class="card conn-card" id="conn-card">
+                    <div class="conn-tabs" role="tablist">
+                        <button type="button" class="conn-tab active" data-conn="usb" role="tab">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M15 7v4h1v2h-3V5h2l-3-4-3 4h2v8H8v-2.07c.7-.37 1.2-1.08 1.2-1.93 0-1.21-.99-2.2-2.2-2.2-1.21 0-2.2.99-2.2 2.2 0 .85.5 1.56 1.2 1.93V13c0 1.11.89 2 2 2h3v3.05c-.71.37-1.2 1.1-1.2 1.95 0 1.22.99 2.2 2.2 2.2 1.21 0 2.2-.98 2.2-2.2 0-.85-.49-1.58-1.2-1.95V15h3c1.11 0 2-.89 2-2v-2h1V7h-4z"/></svg>
+                            <span class="conn-tab-text">
+                                <span class="conn-tab-title">USB接続</span>
+                                <span class="conn-tab-sub">ケーブルで有線接続</span>
+                            </span>
+                        </button>
+                        <button type="button" class="conn-tab" data-conn="wifi" role="tab">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+                            <span class="conn-tab-text">
+                                <span class="conn-tab-title">Wi-Fi接続</span>
+                                <span class="conn-tab-sub">スマホのテザリング / 同一LAN</span>
+                            </span>
+                        </button>
+                    </div>
+
+                    <p class="conn-lock-note" id="conn-lock-note">🔒 接続中は接続方式を変更できません。変更する場合は一度「切断 / 停止」してください。</p>
+
+                    <!-- USB パネル -->
+                    <div class="conn-panel active" id="panel-usb">
+                        <p class="conn-panel-lead">
+                            USB ケーブルで接続し、Android Open Accessory (AOA) モードで通信します（<code>desktop-head-unit --usb</code>）。
+                            充電専用ではなく<strong>データ通信対応のケーブル</strong>を使用してください。
+                        </p>
+                    </div>
+
+                    <!-- Wi-Fi パネル -->
+                    <div class="conn-panel" id="panel-wifi">
+
+                        <!-- ネットワーク状態 -->
+                        <div class="net-info">
+                            <div class="net-info-header">
+                                <h4>📡 ネットワーク状態</h4>
+                                <button type="button" class="btn btn-sm btn-outline" id="btn-net-refresh">再取得</button>
+                            </div>
+                            <div class="net-grid">
+                                <div class="net-item"><span class="label">接続中のWi-Fi</span><span class="value" id="net-ssid">--</span></div>
+                                <div class="net-item"><span class="label">インターフェース</span><span class="value" id="net-iface">--</span></div>
+                                <div class="net-item"><span class="label">このPCのIP</span><span class="value" id="net-local-ip">--</span></div>
+                                <div class="net-item"><span class="label">スマホのIP (ゲートウェイ)</span><span class="value highlight" id="net-gateway">--</span></div>
+                            </div>
+                            <p class="help-text" id="net-hint">ネットワーク情報を取得しています...</p>
+                        </div>
+
+                        <!-- 接続先スマホの IP -->
+                        <div class="form-group">
+                            <label>接続先スマホの IP アドレス</label>
+                            <div class="radio-pill-group">
+                                <label class="radio-pill">
+                                    <input type="radio" name="phone-ip-mode" value="auto" checked>
+                                    <span>自動（テザリング親機を検出）</span>
+                                </label>
+                                <label class="radio-pill">
+                                    <input type="radio" name="phone-ip-mode" value="manual">
+                                    <span>手動入力</span>
+                                </label>
+                            </div>
+                            <input type="text" class="form-input" id="input-phone-ip" placeholder="例: 192.168.1.50" style="display: none; margin-top: 0.6rem;">
+                        </div>
+
+                        <!-- 方法の選択 -->
+                        <div class="form-group">
+                            <label>接続モード</label>
+                            <div class="mode-cards">
+                                <label class="mode-card">
+                                    <input type="radio" name="wifi-mode" value="adb">
+                                    <div class="mode-card-body">
+                                        <div class="mode-card-head">
+                                            <span class="mode-no">方法1</span>
+                                            <span class="badge badge-info">開発・テスト向け</span>
+                                        </div>
+                                        <strong>ADB（Wi-Fiデバッグ）＋ポートフォワーディング</strong>
+                                        <p>Wi-Fi 経由で <code>adb connect</code> し、<code>adb forward tcp:5277 tcp:5277</code> を設定してから DHU を起動します。</p>
+                                    </div>
+                                </label>
+                                <label class="mode-card">
+                                    <input type="radio" name="wifi-mode" value="direct" checked>
+                                    <div class="mode-card-body">
+                                        <div class="mode-card-head">
+                                            <span class="mode-no">方法2</span>
+                                            <span class="badge badge-success">おすすめ・追加機材なし</span>
+                                        </div>
+                                        <strong>ヘッドユニットサーバーへ直接接続</strong>
+                                        <p>ADB を使わず、スマホのヘッドユニットサーバー（TCP 5277）へ DHU から直接つなぎます（<code>--adb=スマホIP:5277</code>）。</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 方法1 の詳細設定 -->
+                        <div class="mode-detail" id="detail-adb">
+                            <div class="form-group">
+                                <label for="input-adb-port">ADB 接続ポート</label>
+                                <input type="number" class="form-input number-input" id="input-adb-port" min="1" max="65535" value="5555">
+                                <p class="help-text">
+                                    <code>adb tcpip</code> 方式は通常 <code>5555</code>。ワイヤレスデバッグ方式はスマホに表示される「IP アドレスとポート」のポート番号を入力します。
+                                </p>
+                            </div>
+                            <div class="mode-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-adb-tcpip">① USB経由で TCP/IP モードを有効化（adb tcpip）</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-adb-connect">② Wi-Fi で接続テスト（adb connect）</button>
+                                <button type="button" class="btn btn-sm btn-outline" id="btn-adb-devices">端末一覧を更新</button>
+                            </div>
+                            <p class="help-text">
+                                ① はスマホを一度だけ USB で接続して実行します（スマホを再起動すると元に戻るため、再起動後は再実行が必要です）。
+                                テザリングの親機になっているスマホではワイヤレスデバッグを ON にできない機種があるため、テザリング運用では ① の方式がおすすめです。
+                            </p>
+                            <details class="pair-box">
+                                <summary>Android 11 以降の「ワイヤレスデバッグ（ペアリング）」を使う場合</summary>
+                                <p class="help-text">スマホの「開発者向けオプション」→「ワイヤレスデバッグ」→「ペア設定コードによるデバイスのペア設定」に表示されるポートとコードを入力します。</p>
+                                <div class="pair-fields">
+                                    <input type="number" class="form-input number-input" id="input-pair-port" placeholder="ペア設定ポート" min="1" max="65535">
+                                    <input type="text" class="form-input" id="input-pair-code" placeholder="6桁のコード" maxlength="6" inputmode="numeric">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-adb-pair">ペアリング（adb pair）</button>
+                                </div>
+                            </details>
+                            <div class="adb-device-list" id="adb-device-list"></div>
+                        </div>
+
+                        <!-- 方法2 の詳細設定 -->
+                        <div class="mode-detail" id="detail-direct">
+                            <div class="form-group">
+                                <label for="input-hu-port">ヘッドユニットサーバーのポート</label>
+                                <input type="number" class="form-input number-input" id="input-hu-port" min="1" max="65535" value="5277">
+                            </div>
+                            <div class="form-group">
+                                <label>接続経路</label>
+                                <div class="radio-pill-group">
+                                    <label class="radio-pill">
+                                        <input type="radio" name="direct-transport" value="adb_flag" checked>
+                                        <span>DHU から直接（--adb=IP:ポート）</span>
+                                    </label>
+                                    <label class="radio-pill">
+                                        <input type="radio" name="direct-transport" value="relay">
+                                        <span>内蔵リレー経由（socat 相当）</span>
+                                    </label>
+                                </div>
+                                <p class="help-text">
+                                    通常は「DHU から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
+                                    <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code> と同じ中継を Linux Auto 自身が行います（socat のインストールは不要）。
+                                </p>
+                            </div>
+                            <div class="mode-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-probe">ヘッドユニットサーバーの疎通確認</button>
+                            </div>
+                        </div>
+
+                        <div class="wifi-result" id="wifi-action-result"></div>
+                    </div>
+                </div>
 
                 <div class="dashboard-grid">
                     <!-- コントロールカード -->
@@ -102,7 +258,7 @@
                             </div>
                             <div class="status-text-group">
                                 <h3 id="main-status-title">待機中 (停止)</h3>
-                                <p id="main-status-desc">スマートフォンをUSBで接続し、「接続開始」を押してください。</p>
+                                <p id="main-status-desc">接続方式を選び、「接続開始」を押してください。</p>
                             </div>
                         </div>
 
@@ -115,7 +271,7 @@
                             <div class="progress-bar-bg">
                                 <div class="progress-bar-fill" id="countdown-progress"></div>
                             </div>
-                            <p class="reconnect-sub">USBケーブルを挿し直してください。自動的にDHUを再起動します。</p>
+                            <p class="reconnect-sub" id="reconnect-sub">USBケーブルを挿し直してください。自動的にDHUを再起動します。</p>
                         </div>
 
                         <!-- 接続ボタン群 -->
@@ -139,6 +295,14 @@
                     <div class="card summary-card">
                         <h3>現在の設定サマリー</h3>
                         <div class="summary-list">
+                            <div class="summary-item">
+                                <span class="label">接続方式</span>
+                                <span class="value" id="summary-connection">--</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="label">接続先</span>
+                                <span class="value" id="summary-target">--</span>
+                            </div>
                             <div class="summary-item">
                                 <span class="label">解像度</span>
                                 <span class="value" id="summary-resolution">--</span>
@@ -331,7 +495,7 @@
             <section id="tab-guide" class="tab-pane">
                 <header class="pane-header">
                     <h2>導入・設定ガイド</h2>
-                    <p class="subtitle">Android SDK、Desktop Head Unit (DHU) の導入から Linux の自動起動設定までステップ順に解説します</p>
+                    <p class="subtitle">Android SDK、Desktop Head Unit (DHU) の導入から Wi-Fi（テザリング）接続、Linux の自動起動設定までステップ順に解説します</p>
                 </header>
 
                 <div class="card guide-card">
@@ -427,9 +591,88 @@ unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip</pre>
                         </div>
                     </div>
 
-                    <!-- STEP 3 -->
+                    <!-- STEP 3: Wi-Fi -->
                     <div class="guide-step">
                         <div class="step-number">3</div>
+                        <div class="step-body">
+                            <h3>Wi-Fi（テザリング）で接続する場合の準備</h3>
+                            <p class="step-lead">
+                                Linux 端末をスマホのテザリング（Wi-Fi アクセスポイント）に接続して、ケーブルなしで Android Auto を使う手順です。
+                                メイン画面で「Wi-Fi接続」を選び、<strong>方法1（ADB）</strong> か <strong>方法2（ヘッドユニットサーバーへ直接）</strong> を選択します。
+                            </p>
+
+                            <div class="guide-sub-section">
+                                <h4>共通: テザリングに接続してヘッドユニットサーバーを起動</h4>
+                                <ol>
+                                    <li>スマホの「テザリング（Wi-Fi アクセスポイント）」を ON にし、Linux 端末をそのアクセスポイントに Wi-Fi 接続します。</li>
+                                    <li>スマホの Android Auto 設定 →「︙」→ <strong>「ヘッドユニットサーバーを起動」</strong> をタップします（通知が表示されれば起動中です）。</li>
+                                    <li>メイン画面の「ネットワーク状態」で、<strong>スマホのIP（ゲートウェイ）</strong> が表示されていることを確認します。</li>
+                                </ol>
+                                <div class="callout callout-tip">
+                                    <span>💡 <strong>スマホの IP は自動検出されます。</strong> テザリング中は Linux 端末のデフォルトゲートウェイ＝スマホ本体です。
+                                    Android 11 以降はテザリングのアドレスが接続のたびに変わることがあるため、「自動（テザリング親機を検出）」のままの利用をおすすめします。
+                                    自宅ルーター等の同一 LAN で使う場合は「手動入力」にスマホの IP を入力してください。</span>
+                                </div>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>方法1: ADB（Wi-Fiデバッグ）＋ポートフォワーディング（開発・テスト向け）</h4>
+                                <p>adb が必要です。未導入の場合はインストールします：</p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "platform-tools"</pre>
+                                    <button class="btn-copy" data-copy="~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk &quot;platform-tools&quot;">コピー</button>
+                                </div>
+                                <p style="margin-top: 1rem;"><strong>【A: adb tcpip 方式】テザリング運用ではこちらがおすすめ</strong></p>
+                                <ol>
+                                    <li>スマホの「開発者向けオプション」で <strong>USB デバッグ</strong> を ON にします。</li>
+                                    <li>スマホを一度だけ USB で接続し、メイン画面の <strong>「① USB経由で TCP/IP モードを有効化」</strong> を押します（スマホに許可ダイアログが出たら「許可」）。</li>
+                                    <li>USB ケーブルを外し、<strong>「② Wi-Fi で接続テスト」</strong> で「connected to …」と表示されることを確認します。</li>
+                                    <li>「接続開始」を押すと、<code>adb connect</code> → <code>adb forward tcp:5277 tcp:5277</code> → DHU 起動が自動で行われます。</li>
+                                </ol>
+                                <p class="help-text">※ スマホを再起動すると TCP/IP モードは解除されるため、② からやり直す前に ① を再実行してください。</p>
+                                <p class="help-text">手動で行う場合のコマンド（<code>&lt;スマホIP&gt;</code> はゲートウェイの IP）：</p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">adb tcpip 5555            # USB 接続中に一度だけ
+adb connect &lt;スマホIP&gt;:5555
+adb forward tcp:5277 tcp:5277
+./desktop-head-unit</pre>
+                                    <button class="btn-copy" data-copy="adb connect &lt;スマホIP&gt;:5555 &amp;&amp; adb forward tcp:5277 tcp:5277">コピー</button>
+                                </div>
+
+                                <p style="margin-top: 1rem;"><strong>【B: ワイヤレスデバッグ方式】Android 11 以降・同一 Wi-Fi ルーター環境向け</strong></p>
+                                <ol>
+                                    <li>「開発者向けオプション」→ <strong>ワイヤレスデバッグ</strong> を ON にします。</li>
+                                    <li>「ペア設定コードによるデバイスのペア設定」を開き、表示されたポートとコードをメイン画面の「ワイヤレスデバッグ（ペアリング）」欄に入力して「ペアリング」を押します。</li>
+                                    <li>ワイヤレスデバッグ画面の「IP アドレスとポート」のポート番号を <strong>ADB 接続ポート</strong> に入力し、「接続開始」を押します。</li>
+                                </ol>
+                                <p class="help-text">※ テザリングの親機になっているスマホでは、機種によってワイヤレスデバッグを ON にできません。その場合は A の方式を使用してください。</p>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>方法2: ヘッドユニットサーバーへ直接接続（おすすめ・追加機材なし）</h4>
+                                <ol>
+                                    <li>共通手順でヘッドユニットサーバーを起動します（ADB や USB デバッグは不要です）。</li>
+                                    <li>メイン画面で「方法2」を選び、<strong>「ヘッドユニットサーバーの疎通確認」</strong> を押して「接続できました」と表示されることを確認します。</li>
+                                    <li>「接続開始」を押すと、DHU が <code>--adb=&lt;スマホIP&gt;:5277</code> でスマホへ直接接続します。</li>
+                                </ol>
+                                <p class="help-text">手動で行う場合のコマンド：</p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">./desktop-head-unit --adb=&lt;スマホIP&gt;:5277</pre>
+                                    <button class="btn-copy" data-copy="./desktop-head-unit --adb=&lt;スマホIP&gt;:5277">コピー</button>
+                                </div>
+                                <p class="help-text">
+                                    ※ DHU から直接つながらない場合は、接続経路を <strong>「内蔵リレー経由」</strong> に切り替えてください。
+                                    <code>socat TCP-LISTEN:5277,fork TCP:&lt;スマホIP&gt;:5277</code> と同じ中継を Linux Auto が行うため、socat のインストールは不要です。<br>
+                                    ※ 疎通確認で「接続を拒否しました」となる場合、ヘッドユニットサーバーが起動していないか、お使いの端末・Android Auto のバージョンでは
+                                    Wi-Fi 側からの接続を受け付けていない可能性があります。その場合は方法1をご利用ください。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 4 -->
+                    <div class="guide-step">
+                        <div class="step-number">4</div>
                         <div class="step-body">
                             <h3>サーバーをサービスとして自動起動する（systemd）</h3>
                             <p class="step-lead">
@@ -513,9 +756,9 @@ systemctl --user start linux-auto</pre>
                         </div>
                     </div>
 
-                    <!-- STEP 4 -->
+                    <!-- STEP 5 -->
                     <div class="guide-step">
-                        <div class="step-number">4</div>
+                        <div class="step-number">5</div>
                         <div class="step-body">
                             <h3>起動アイコン（画面を開くだけ）を登録する</h3>
                             <p class="step-lead">
@@ -544,7 +787,7 @@ chmod +x install-desktop-shortcut.sh
                                     <li>サービス未登録の場合のみ、サーバーを一時的にバックグラウンド起動します（ログ: <code>~/.cache/linux-auto/server.log</code>）。</li>
                                 </ol>
                                 <div class="callout callout-tip">
-                                    💡 <strong>ブラウザを閉じても接続は切れません。</strong> Android Auto を終了したいときは、この画面の「切断 / 停止」ボタンを押してください。
+                                    <span>💡 <strong>ブラウザを閉じても接続は切れません。</strong> Android Auto を終了したいときは、この画面の「切断 / 停止」ボタンを押してください。</span>
                                 </div>
                             </div>
 

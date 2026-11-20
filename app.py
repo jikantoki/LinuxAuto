@@ -30,6 +30,8 @@ import json
 import time
 import shutil
 import signal
+import socket
+import struct
 import argparse
 import threading
 import subprocess
@@ -44,6 +46,13 @@ from urllib.parse import urlparse, parse_qs
 # =============================================================================
 PORT = 8855
 HOST = "127.0.0.1"
+
+# Android Auto ヘッドユニットサーバー (スマホ側) の標準ポート
+HU_SERVER_PORT = 5277
+# 方法1 (adb forward) で PC 側に開くポート。DHU は引数なしだと localhost:5277 に接続する
+ADB_FORWARD_LOCAL_PORT = 5277
+# 方法2 (内蔵リレー経由) で PC 側に開くポート
+RELAY_LOCAL_PORT = 5277
 
 # ユーザーのホームディレクトリの取得（Node.jsの os.homedir() や PHPの $_SERVER['HOME'] に相当）
 HOME_DIR = Path.home()
@@ -119,6 +128,14 @@ class ConfigManager:
             "dhu_path": cls.find_default_dhu_path(),
             "auto_retry": True,
             "retry_seconds": 10,
+            # ---- 接続方式 ----
+            "connection_type": "usb",        # "usb" | "wifi"
+            "wifi_mode": "direct",           # "adb" (方法1) | "direct" (方法2)
+            "phone_ip_auto": True,           # True: テザリング親機 (デフォルトゲートウェイ) を自動検出
+            "phone_ip": "",                  # 手動指定時のスマホ IP
+            "adb_port": 5555,                # 方法1: adb connect 先のポート
+            "hu_port": HU_SERVER_PORT,       # ヘッドユニットサーバーのポート
+            "direct_transport": "adb_flag",  # 方法2: "adb_flag" (--adb=IP:5277) | "relay" (内蔵リレー)
         }
 
         if not APP_CONFIG_PATH.exists():
@@ -140,10 +157,50 @@ class ConfigManager:
         """
         APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         current = cls.load_app_config()
-        current.update(data)
+        current.update(cls.sanitize_app_config(data or {}))
         with open(APP_CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(current, f, indent=2, ensure_ascii=False)
         return current
+
+    @staticmethod
+    def sanitize_app_config(data):
+        """
+        画面から送られた設定値を検証・型変換します (未知のキーは捨てる)。
+        Spring Boot の @Validated による入力チェックに相当します。
+        """
+        clean = {}
+
+        def to_port(value, default):
+            try:
+                v = int(value)
+                return v if 1 <= v <= 65535 else default
+            except (TypeError, ValueError):
+                return default
+
+        def to_bool(value):
+            return str(value).lower() in ("true", "1", "yes", "on")
+
+        if "dhu_path" in data:
+            clean["dhu_path"] = str(data["dhu_path"]).strip()
+        if "connection_type" in data:
+            clean["connection_type"] = "wifi" if data["connection_type"] == "wifi" else "usb"
+        if "wifi_mode" in data:
+            clean["wifi_mode"] = "adb" if data["wifi_mode"] == "adb" else "direct"
+        if "phone_ip_auto" in data:
+            clean["phone_ip_auto"] = to_bool(data["phone_ip_auto"])
+        if "phone_ip" in data:
+            # IP アドレス / ホスト名として使える文字だけを許可
+            clean["phone_ip"] = "".join(c for c in str(data["phone_ip"]).strip() if c.isalnum() or c in ".-:")
+        if "adb_port" in data:
+            clean["adb_port"] = to_port(data["adb_port"], 5555)
+        if "hu_port" in data:
+            clean["hu_port"] = to_port(data["hu_port"], HU_SERVER_PORT)
+        if "direct_transport" in data:
+            clean["direct_transport"] = "relay" if data["direct_transport"] == "relay" else "adb_flag"
+        for key in ("auto_retry",):
+            if key in data:
+                clean[key] = to_bool(data[key])
+        return clean
 
     @classmethod
     def load_headunit_ini(cls):
@@ -275,13 +332,358 @@ def get_systemd_user_session_env():
 
 
 # =============================================================================
+# 子プロセス (DHU / adb) 用の環境変数を組み立てる
+# =============================================================================
+def build_child_env(dhu_path=None):
+    """
+    DHU や adb を起動する際の環境変数を作成します。
+    GUIショートカットや systemd から起動された場合は PATH が最小限しか通っていないため、
+    Android SDK の platform-tools (adb) などを PATH に補完します。
+    """
+    env = os.environ.copy()
+    path_list = env.get("PATH", "").split(os.pathsep)
+
+    sdk_candidates = []
+    if dhu_path:
+        try:
+            # .../<SDK>/extras/google/auto/desktop-head-unit → <SDK>
+            sdk_candidates.append(Path(dhu_path).resolve().parent.parent.parent.parent)
+        except Exception:
+            pass
+    for env_var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"]:
+        if os.environ.get(env_var):
+            sdk_candidates.append(Path(os.environ[env_var]))
+    sdk_candidates += [
+        HOME_DIR / "Android" / "Sdk",
+        HOME_DIR / "android-sdk",
+        HOME_DIR / "AndroidSdk",
+        HOME_DIR / ".android-sdk",
+        Path("/usr/lib/android-sdk"),
+    ]
+
+    for sdk in sdk_candidates:
+        for sub in [("platform-tools",), ("cmdline-tools", "latest", "bin")]:
+            p = sdk.joinpath(*sub)
+            if p.is_dir() and str(p) not in path_list:
+                path_list.insert(0, str(p))
+
+    env["PATH"] = os.pathsep.join(path_list)
+    env["HOME"] = str(HOME_DIR)
+    return env
+
+
+# =============================================================================
+# ネットワーク検出 (テザリング前提) ヘルパー
+# =============================================================================
+class NetworkHelper:
+    """
+    Linux 端末がスマホのテザリング (Wi-Fi アクセスポイント) に接続している前提で、
+    スマホの IP アドレスを自動検出するためのヘルパーです。
+
+    【テザリング時の考え方】
+    スマホがアクセスポイント (親機) になる場合、Linux 側の「デフォルトゲートウェイ」が
+    そのままスマホ自身の IP アドレスになります。
+    Android 11 以降はテザリングのサブネットが接続のたびにランダム化されることがあるため
+    (例: 192.168.43.1 固定ではない)、毎回ルーティングテーブルから取得し直します。
+    外部コマンド (ip / nmcli) に頼らず /proc/net/route を直接読むため、最小構成の OS でも動作します。
+    """
+
+    @staticmethod
+    def _is_wireless(iface):
+        return os.path.isdir(f"/sys/class/net/{iface}/wireless")
+
+    @classmethod
+    def get_default_routes(cls):
+        """/proc/net/route からデフォルトルート一覧 (iface, gateway, metric, wireless) を返します。"""
+        routes = []
+        try:
+            with open("/proc/net/route", "r") as f:
+                lines = f.readlines()[1:]
+        except Exception:
+            return routes
+
+        for line in lines:
+            cols = line.split()
+            if len(cols) < 8:
+                continue
+            iface, dest, gw_hex, flags_hex, metric = cols[0], cols[1], cols[2], cols[3], cols[6]
+            try:
+                flags = int(flags_hex, 16)
+            except ValueError:
+                continue
+            # 宛先 0.0.0.0 (デフォルトルート) かつ RTF_GATEWAY(0x2) が立っているもの
+            if dest != "00000000" or not (flags & 0x2):
+                continue
+            try:
+                gw = socket.inet_ntoa(struct.pack("<L", int(gw_hex, 16)))
+            except Exception:
+                continue
+            routes.append({
+                "iface": iface,
+                "gateway": gw,
+                "metric": int(metric) if metric.isdigit() else 0,
+                "wireless": cls._is_wireless(iface),
+            })
+
+        # Wi-Fi インターフェースを優先し、その中でメトリックが小さい順
+        routes.sort(key=lambda r: (0 if r["wireless"] else 1, r["metric"]))
+        return routes
+
+    @staticmethod
+    def get_local_ip_for(target):
+        """target へ通信する際に使われるこの端末側の IP アドレス (パケットは送信しません)。"""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((target, 9))
+                return s.getsockname()[0]
+        except Exception:
+            return ""
+
+    @staticmethod
+    def get_ssid(iface):
+        """接続中の Wi-Fi の SSID (nmcli / iwgetid があれば)。取得できなければ空文字。"""
+        commands = []
+        if shutil.which("nmcli"):
+            commands.append(["nmcli", "-t", "-f", "GENERAL.CONNECTION", "device", "show", iface])
+        if shutil.which("iwgetid"):
+            commands.append(["iwgetid", iface, "-r"])
+        for cmd in commands:
+            try:
+                out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     universal_newlines=True, timeout=2).stdout.strip()
+            except Exception:
+                continue
+            if out:
+                return out.split(":", 1)[-1].strip() if cmd[0] == "nmcli" else out
+        return ""
+
+    @classmethod
+    def info(cls):
+        """画面表示用のネットワーク情報をまとめて返します。"""
+        routes = cls.get_default_routes()
+        primary = routes[0] if routes else None
+        result = {
+            "detected": primary is not None,
+            "iface": primary["iface"] if primary else "",
+            "wireless": primary["wireless"] if primary else False,
+            "gateway": primary["gateway"] if primary else "",
+            "local_ip": cls.get_local_ip_for(primary["gateway"]) if primary else "",
+            "ssid": cls.get_ssid(primary["iface"]) if primary and primary["wireless"] else "",
+            "routes": routes,
+        }
+        return result
+
+    @classmethod
+    def resolve_phone_ip(cls, config):
+        """
+        接続先スマホの IP を決定します。
+        - phone_ip_auto が True (既定) : デフォルトゲートウェイ = テザリング親機のスマホ
+        - False : 手動入力された phone_ip
+        """
+        if not config.get("phone_ip_auto", True):
+            return str(config.get("phone_ip", "")).strip()
+        routes = cls.get_default_routes()
+        return routes[0]["gateway"] if routes else ""
+
+    @staticmethod
+    def probe_tcp(host, port, timeout=2.0):
+        """host:port に TCP 接続できるか確認します。(成功, メッセージ) を返します。"""
+        try:
+            with socket.create_connection((host, int(port)), timeout=timeout):
+                return True, f"{host}:{port} に接続できました"
+        except socket.timeout:
+            return False, f"{host}:{port} への接続がタイムアウトしました"
+        except ConnectionRefusedError:
+            return False, f"{host}:{port} は接続を拒否しました (サーバー未起動の可能性)"
+        except OSError as e:
+            return False, f"{host}:{port} に接続できません ({e.strerror or e})"
+
+
+# =============================================================================
+# ADB 操作ヘルパー (方法1: Wi-Fi ADB + ポートフォワーディング)
+# =============================================================================
+class ADBHelper:
+    """adb コマンドのラッパーです。PATH は build_child_env() で補完したものを使います。"""
+
+    def __init__(self, env):
+        self.env = env
+        self.path = shutil.which("adb", path=env.get("PATH", ""))
+
+    def run(self, args, timeout=15):
+        if not self.path:
+            return 127, "adb が見つかりません (Android SDK の platform-tools をインストールしてください)"
+        try:
+            p = subprocess.run([self.path] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               stdin=subprocess.DEVNULL, universal_newlines=True,
+                               timeout=timeout, env=self.env)
+            return p.returncode, p.stdout.strip()
+        except subprocess.TimeoutExpired:
+            return 124, f"adb {' '.join(args)} がタイムアウトしました"
+        except Exception as e:
+            return 1, str(e)
+
+    def devices(self):
+        """adb devices -l の結果を [{serial, state, model, transport}] で返します。"""
+        rc, out = self.run(["devices", "-l"], timeout=10)
+        result = []
+        if rc != 0:
+            return result
+        for line in out.splitlines():
+            line = line.strip()
+            if not line or line.startswith("List of devices") or line.startswith("*"):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            serial, state = parts[0], parts[1]
+            model = ""
+            for p in parts[2:]:
+                if p.startswith("model:"):
+                    model = p.split(":", 1)[1]
+            wireless = (":" in serial) or ("_adb-tls-connect" in serial)
+            result.append({
+                "serial": serial,
+                "state": state,
+                "model": model,
+                "transport": "wifi" if wireless else "usb",
+            })
+        return result
+
+    def connect(self, host, port):
+        rc, out = self.run(["connect", f"{host}:{port}"], timeout=15)
+        ok = ("connected to" in out) and ("cannot" not in out) and ("failed" not in out.lower())
+        return ok, out
+
+    def pair(self, host, port, code):
+        rc, out = self.run(["pair", f"{host}:{port}", str(code)], timeout=30)
+        ok = rc == 0 and "Successfully paired" in out
+        return ok, out
+
+    def tcpip(self, port):
+        """USB 接続中の端末を TCP/IP (adb tcpip <port>) モードに切り替えます。"""
+        usb_devices = [d for d in self.devices() if d["transport"] == "usb" and d["state"] == "device"]
+        if not usb_devices:
+            return False, "USB デバッグで接続された端末が見つかりません。USB ケーブルで接続し、スマホで「USB デバッグを許可」してください。"
+        serial = usb_devices[0]["serial"]
+        rc, out = self.run(["-s", serial, "tcpip", str(port)], timeout=15)
+        return rc == 0, out or f"{serial} を TCP/IP モード (ポート {port}) に切り替えました"
+
+    def forward(self, serial, local_port, remote_port):
+        rc, out = self.run(["-s", serial, "forward", f"tcp:{local_port}", f"tcp:{remote_port}"], timeout=10)
+        return rc == 0, out
+
+    def remove_forward(self, local_port):
+        if self.path:
+            self.run(["forward", "--remove", f"tcp:{local_port}"], timeout=5)
+
+
+# =============================================================================
+# 内蔵 TCP リレー (方法2 の予備経路 / socat 相当)
+# =============================================================================
+class TCPRelay:
+    """
+    127.0.0.1:<listen_port> で待ち受け、届いた接続をスマホの <remote_host>:<remote_port> へ中継します。
+    `socat TCP-LISTEN:5277,fork TCP:<スマホIP>:5277` と同じ働きを Python 標準ライブラリだけで実現し、
+    socat のインストールを不要にしています。
+    """
+
+    def __init__(self, listen_port, remote_host, remote_port, logger):
+        self.listen_port = int(listen_port)
+        self.remote_host = remote_host
+        self.remote_port = int(remote_port)
+        self.log = logger
+        self._server = None
+        self._conns = []
+        self._lock = threading.Lock()
+        self._running = False
+
+    def start(self):
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", self.listen_port))
+        srv.listen(4)
+        self._server = srv
+        self._running = True
+        threading.Thread(target=self._accept_loop, daemon=True).start()
+        self.log(f"[リレー] 127.0.0.1:{self.listen_port} → {self.remote_host}:{self.remote_port} の中継を開始しました")
+
+    def _accept_loop(self):
+        while self._running:
+            try:
+                client, _ = self._server.accept()
+            except OSError:
+                break
+            if not self._running:
+                client.close()
+                break
+            try:
+                remote = socket.create_connection((self.remote_host, self.remote_port), timeout=5)
+                remote.settimeout(None)
+            except OSError as e:
+                self.log(f"[リレー] スマホ {self.remote_host}:{self.remote_port} へ接続できません: {e}")
+                client.close()
+                continue
+            for s in (client, remote):
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            with self._lock:
+                self._conns += [client, remote]
+            threading.Thread(target=self._pump, args=(client, remote), daemon=True).start()
+            threading.Thread(target=self._pump, args=(remote, client), daemon=True).start()
+
+    @staticmethod
+    def _pump(src, dst):
+        try:
+            while True:
+                data = src.recv(65536)
+                if not data:
+                    break
+                dst.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for s in (src, dst):
+                try:
+                    s.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def stop(self):
+        self._running = False
+        if self._server:
+            # ※ Linux では別スレッドが accept() で待機中のソケットを close() しただけでは
+            #    待ち受けが解除されないため、先に shutdown() で accept() を起こしてから閉じる
+            try:
+                self._server.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                self._server.close()
+            except OSError:
+                pass
+        with self._lock:
+            for s in self._conns:
+                try:
+                    s.close()
+                except OSError:
+                    pass
+            self._conns = []
+        self.log("[リレー] 中継を停止しました")
+
+
+# =============================================================================
 # DHUプロセス＆再接続監視コントローラー (Process Manager)
 # =============================================================================
 class DHUManager:
     """
     desktop-head-unit のプロセス起動、停止、死活監視、
-    およびUSB切断時の『10秒間自動復帰ループ』を管理するシングルトン風クラス。
-    
+    およびUSB/Wi-Fi切断時の『10秒間自動復帰ループ』を管理するシングルトン風クラス。
+
+    【接続方式】
+    - USB             : desktop-head-unit --usb (AOA アクセサリモード)
+    - Wi-Fi / 方法1   : adb connect <スマホIP>:<ADBポート> → adb forward tcp:5277 tcp:5277 → desktop-head-unit
+    - Wi-Fi / 方法2   : desktop-head-unit --adb=<スマホIP>:5277 (ヘッドユニットサーバーへ直接 TCP 接続)
+                        ※ 予備として内蔵リレー (socat 相当) 経由も選択可能
+
     【Node.jsとの比較】
     Node.jsの child_process.spawn() + setInterval によるプロセス監視に相当しますが、
     Pythonでは threading.Thread による独立したワーカースレッドで安全に監視ループを回します。
@@ -290,19 +692,21 @@ class DHUManager:
     def __init__(self):
         self._lock = threading.Lock() # スレッドセーフのためのミューテックス（Javaの synchronized に相当）
         self.process = None           # 起動中の subprocess.Popen オブジェクト
-        self.status = "IDLE"          # "IDLE" | "RUNNING" | "RECONNECTING" | "ERROR"
+        self.status = "IDLE"          # "IDLE" | "STARTING" | "RUNNING" | "RECONNECTING" | "ERROR"
         self.user_stopped = False     # ユーザーの明示的な停止操作かどうかを識別するフラグ
         self.last_error = ""
         self.logs = []                # 最新のログ行を保持（リングバッファ）
-        self.max_logs = 100
+        self.max_logs = 200
         self.retry_countdown = 0      # 再接続カウントダウン（残り秒数）
         self.monitor_thread = None
+        self.relay = None             # 方法2 (リレー経由) 用の TCPRelay
+        self.connection = {}          # 現在の接続方式 (画面表示用)
 
     def add_log(self, message):
         """タイムスタンプ付きでメモリ上のログ配列に追加します。"""
         timestamp = time.strftime("%H:%M:%S")
         log_line = f"[{timestamp}] {message}"
-        print(log_line)
+        print(log_line, flush=True)
         with self._lock:
             self.logs.append(log_line)
             if len(self.logs) > self.max_logs:
@@ -323,50 +727,57 @@ class DHUManager:
                 "last_error": self.last_error,
                 "logs": list(self.logs),
                 "run_mode": "service" if is_running_as_service() else "manual",
+                "connection": dict(self.connection),
             }
 
-    def start(self):
+    def is_busy(self):
+        with self._lock:
+            return self.status in ("STARTING", "RUNNING", "RECONNECTING")
+
+    def start(self, options=None):
         """
-        Android Auto (desktop-head-unit --usb) を起動します。
+        Android Auto (DHU) を起動します。options に接続方式が渡された場合は設定に保存してから使います。
         すでに起動している場合は無視します。
         """
         with self._lock:
-            if self.process is not None and self.process.poll() is None:
+            if self.status in ("STARTING", "RUNNING", "RECONNECTING"):
                 return True, "すでに実行中です。"
-
             self.user_stopped = False
             self.status = "STARTING"
             self.retry_countdown = 0
+            self.last_error = ""
 
-        # アプリ設定から実行パスを取得
-        config = ConfigManager.load_app_config()
+        if options:
+            config = ConfigManager.save_app_config(options)
+        else:
+            config = ConfigManager.load_app_config()
         dhu_path = config.get("dhu_path", "").strip()
 
         if not dhu_path or not os.path.isfile(dhu_path):
-            self.status = "ERROR"
-            self.last_error = f"desktop-head-unitが見つかりません: {dhu_path}"
-            self.add_log(f"[エラー] {self.last_error}")
-            return False, self.last_error
-
+            return self._fail_start(f"desktop-head-unitが見つかりません: {dhu_path}")
         if not os.access(dhu_path, os.X_OK):
-            self.status = "ERROR"
-            self.last_error = f"desktop-head-unitに実行権限がありません: {dhu_path}"
-            self.add_log(f"[エラー] {self.last_error}")
-            return False, self.last_error
+            return self._fail_start(f"desktop-head-unitに実行権限がありません: {dhu_path}")
 
         # バックグラウンドの監視スレッドを起動
         self.monitor_thread = threading.Thread(
             target=self._run_and_monitor_loop,
-            args=(dhu_path,),
+            args=(dhu_path, config),
             daemon=True
         )
         self.monitor_thread.start()
         return True, "起動を開始しました。"
 
+    def _fail_start(self, message):
+        with self._lock:
+            self.status = "ERROR"
+            self.last_error = message
+        self.add_log(f"[エラー] {message}")
+        return False, message
+
     def stop(self):
         """
         ユーザーによる明示的な切断・終了処理。
-        この場合、USB切断時の10秒自動復帰ループは発動させません。
+        この場合、切断時の10秒自動復帰ループは発動させません。
         """
         self.add_log("[操作] 停止ボタンが押されました。")
         with self._lock:
@@ -400,11 +811,18 @@ class DHUManager:
             except Exception as e:
                 self.add_log(f"[警告] プロセス終了処理中の例外: {e}")
 
+        self._stop_relay()
         with self._lock:
             self.process = None
             self.status = "IDLE"
+            self.connection = {}
         self.add_log("[状態] 停止しました。")
         return True, "停止しました。"
+
+    def _stop_relay(self):
+        if self.relay is not None:
+            self.relay.stop()
+            self.relay = None
 
     def _apply_session_env(self, env):
         """
@@ -430,130 +848,226 @@ class DHUManager:
                 "デスクトップにログインしてから接続してください。"
             )
 
-    def _run_and_monitor_loop(self, dhu_path):
+    # -------------------------------------------------------------------------
+    # 接続方式ごとの準備 (毎回の接続試行の直前に実行)
+    # -------------------------------------------------------------------------
+    def _prepare_connection(self, dhu_path, config, env):
+        """
+        接続方式に応じた前準備を行い、実行する DHU コマンドを返します。
+        戻り値: (cmd: list | None, error: str | None)
+        """
+        ctype = config.get("connection_type", "usb")
+
+        if ctype != "wifi":
+            with self._lock:
+                self.connection = {"type": "usb", "label": "USB (AOA アクセサリモード)", "target": ""}
+            return [dhu_path, "--usb"], None
+
+        # ---- 以下 Wi-Fi 接続 ----
+        wifi_mode = config.get("wifi_mode", "direct")
+        hu_port = int(config.get("hu_port") or HU_SERVER_PORT)
+        host = NetworkHelper.resolve_phone_ip(config)
+        if not host:
+            if config.get("phone_ip_auto", True):
+                return None, ("スマホの IP アドレスを自動検出できません。Linux 端末がスマホのテザリング (Wi-Fi) に"
+                              "接続されているか確認するか、IP アドレスを手動で入力してください。")
+            return None, "スマホの IP アドレスが入力されていません。"
+
+        how = "自動検出: テザリング親機" if config.get("phone_ip_auto", True) else "手動入力"
+        self.add_log(f"[Wi-Fi] 接続先スマホ: {host} ({how})")
+
+        if wifi_mode == "adb":
+            return self._prepare_wifi_adb(dhu_path, config, env, host, hu_port)
+        return self._prepare_wifi_direct(dhu_path, config, env, host, hu_port)
+
+    def _prepare_wifi_adb(self, dhu_path, config, env, host, hu_port):
+        """方法1: Wi-Fi ADB 接続 + adb forward tcp:5277 tcp:5277"""
+        adb = ADBHelper(env)
+        if not adb.path:
+            return None, "adb が見つかりません。Android SDK の platform-tools をインストールしてください。"
+
+        adb_port = int(config.get("adb_port") or 5555)
+        target = f"{host}:{adb_port}"
+
+        devices = adb.devices()
+        online = [d for d in devices if d["state"] == "device"]
+        serial = target if any(d["serial"] == target for d in online) else None
+
+        if serial is None:
+            self.add_log(f"[ADB] adb connect {target} を実行します...")
+            ok, out = adb.connect(host, adb_port)
+            self.add_log(f"[ADB] {out}")
+            if ok:
+                serial = target
+            else:
+                # ワイヤレスデバッグ (mDNS 自動接続) 等で別名のシリアルが既にある場合はそれを使う
+                wireless = [d for d in online if d["transport"] == "wifi"]
+                if wireless:
+                    serial = wireless[0]["serial"]
+                    self.add_log(f"[ADB] 接続済みの無線デバイス {serial} を使用します")
+                else:
+                    return None, (f"adb connect {target} に失敗しました。スマホで「USB デバッグ」が有効か、"
+                                  f"一度 USB 接続して「TCP/IP モード有効化 (adb tcpip {adb_port})」を実行したか確認してください。")
+
+        if any(d["serial"] == serial and d["state"] == "unauthorized" for d in adb.devices()):
+            return None, "スマホ側で USB デバッグ (この PC) が許可されていません。スマホの画面で「許可」をタップしてください。"
+
+        ok, out = adb.forward(serial, ADB_FORWARD_LOCAL_PORT, hu_port)
+        if not ok:
+            return None, f"adb forward に失敗しました: {out}"
+        self.add_log(f"[ADB] adb -s {serial} forward tcp:{ADB_FORWARD_LOCAL_PORT} tcp:{hu_port} を設定しました")
+
+        with self._lock:
+            self.connection = {
+                "type": "wifi", "wifi_mode": "adb",
+                "label": "Wi-Fi 方法1 (ADB + ポートフォワード)",
+                "target": f"{serial} → localhost:{ADB_FORWARD_LOCAL_PORT}",
+            }
+        # DHU の既定動作 (引数なし) は localhost:5277 への接続
+        return [dhu_path], None
+
+    def _prepare_wifi_direct(self, dhu_path, config, env, host, hu_port):
+        """方法2: ヘッドユニットサーバー (スマホ:5277) へ直接接続"""
+        ok, msg = NetworkHelper.probe_tcp(host, hu_port)
+        self.add_log(f"[疎通確認] {msg}")
+        if not ok:
+            return None, (f"{msg}。スマホの Android Auto 開発者設定で「ヘッドユニットサーバーを起動」しているか確認してください。"
+                          "改善しない場合、お使いの端末ではヘッドユニットサーバーが Wi-Fi からの接続を受け付けていない可能性があるため、"
+                          "方法1 (ADB) をお試しください。")
+
+        transport = config.get("direct_transport", "adb_flag")
+        if transport == "relay":
+            # 以前の adb forward が同じポートを掴んでいると衝突するため解除しておく
+            ADBHelper(env).remove_forward(RELAY_LOCAL_PORT)
+            if self.relay is None or self.relay.remote_host != host or self.relay.remote_port != hu_port:
+                self._stop_relay()
+                relay = TCPRelay(RELAY_LOCAL_PORT, host, hu_port, self.add_log)
+                try:
+                    relay.start()
+                except OSError as e:
+                    return None, f"リレー用ポート 127.0.0.1:{RELAY_LOCAL_PORT} を開けません ({e.strerror or e})。adb forward 等が使用中でないか確認してください。"
+                self.relay = relay
+            with self._lock:
+                self.connection = {
+                    "type": "wifi", "wifi_mode": "direct",
+                    "label": "Wi-Fi 方法2 (内蔵リレー経由)",
+                    "target": f"localhost:{RELAY_LOCAL_PORT} → {host}:{hu_port}",
+                }
+            return [dhu_path], None
+
+        with self._lock:
+            self.connection = {
+                "type": "wifi", "wifi_mode": "direct",
+                "label": "Wi-Fi 方法2 (ヘッドユニットサーバーへ直接)",
+                "target": f"{host}:{hu_port}",
+            }
+        return [dhu_path, f"--adb={host}:{hu_port}"], None
+
+    # -------------------------------------------------------------------------
+    # 監視ループ本体
+    # -------------------------------------------------------------------------
+    def _run_and_monitor_loop(self, dhu_path, config):
         """
         【重要ロジック】
         DHUプロセスの実行、起動直後のUSBモード切り替え瞬断の即時リカバリ、
-        および利用中のUSBケーブル抜け時の『10秒自動復帰』を制御する監視ループ。
+        および切断時の『10秒自動復帰』を制御する監視ループ。
         """
-        instant_retry_count = 0  # 起動直後の瞬断連続カウント
+        instant_retry_count = 0  # 起動直後の瞬断連続カウント (USB のみ)
+        is_usb = config.get("connection_type", "usb") != "wifi"
 
-        # =====================================================================
-        # 環境変数 PATH の自動補正
-        # GUIショートカット(.desktop)から起動された場合、システムの最小限のPATHしか通っておらず、
-        # DHUが内部で必要とする 'adb' (platform-tools) が見つからずに即終了する問題を防ぎます。
-        # =====================================================================
-        env = os.environ.copy()
-        path_list = env.get("PATH", "").split(os.pathsep)
-
-        dhu_file = Path(dhu_path).resolve()
-        sdk_candidates = [
-            dhu_file.parent.parent.parent.parent,  # .../Android/Sdk
-            HOME_DIR / "Android" / "Sdk",
-            HOME_DIR / "AndroidSdk",
-            HOME_DIR / ".android-sdk",
-            Path("/usr/lib/android-sdk"),
-        ]
-
-        for sdk in sdk_candidates:
-            pt = sdk / "platform-tools"
-            if pt.is_dir() and str(pt) not in path_list:
-                path_list.insert(0, str(pt))
-            cl = sdk / "cmdline-tools" / "latest" / "bin"
-            if cl.is_dir() and str(cl) not in path_list:
-                path_list.insert(0, str(cl))
-
-        env["PATH"] = os.pathsep.join(path_list)
-        env["HOME"] = str(HOME_DIR)
+        env = build_child_env(dhu_path)
         self._apply_session_env(env)
+        dhu_work_dir = str(Path(dhu_path).resolve().parent)
 
         while not self.user_stopped:
-            cmd = [dhu_path, "--usb"]
-            self.add_log(f"[実行] コマンド呼び出し: {' '.join(cmd)}")
+            elapsed = 0.0
+            cmd, prep_error = self._prepare_connection(dhu_path, config, env)
 
-            start_time = time.time()
-            last_dhu_output = ""
-
-            try:
-                dhu_work_dir = str(dhu_file.parent)
-
-                # =============================================================
-                # 【デスクトップ起動時の即時終了対策】
-                # DHU は標準入力を対話コンソール (day / night / quit 等) として読み続けます。
-                # .desktop (Terminal=false) から起動すると stdin が /dev/null になり、
-                # DHU は即座に EOF を受け取って「quit」と同様に exit 0 で終了してしまいます。
-                # そこで、何も書き込まずに開いたままのパイプを stdin として渡し、
-                # ターミナル起動時と同じ「入力待ち」状態を再現します。
-                # (このパイプは停止時に 'quit' コマンドを送る用途にも使います)
-                # =============================================================
-                self.process = subprocess.Popen(
-                    cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                    bufsize=1,
-                    env=env,
-                    cwd=dhu_work_dir
-                )
+            if prep_error:
+                # 準備段階の失敗 (スマホが見つからない等) は 10 秒後に再試行
+                self.add_log(f"[エラー] {prep_error}")
                 with self._lock:
-                    self.status = "RUNNING"
-                    self.last_error = ""
+                    self.last_error = prep_error
+            else:
+                self.add_log(f"[実行] コマンド呼び出し: {' '.join(cmd)}")
+                start_time = time.time()
+                last_dhu_output = ""
 
-                self.add_log(f"[接続] desktop-head-unit を起動しました (PID: {self.process.pid})")
-
-                # 出力ログのリアルタイム読み取り
-                if self.process.stdout:
-                    for line in self.process.stdout:
-                        clean_line = line.strip()
-                        if clean_line:
-                            last_dhu_output = clean_line
-                            self.add_log(f"[DHU] {clean_line}")
-
-                self.process.wait()
-                if self.process.stdin is not None:
-                    try:
-                        self.process.stdin.close()
-                    except Exception:
-                        pass
-                exit_code = self.process.returncode
-                elapsed = time.time() - start_time
-                self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
-
-                if exit_code != 0:
-                    if last_dhu_output:
-                        self.add_log(f"[エラー詳細] DHU最終出力: {last_dhu_output}")
+                try:
+                    # =========================================================
+                    # 【デスクトップ起動時の即時終了対策】
+                    # DHU は標準入力を対話コンソール (day / night / quit 等) として読み続けます。
+                    # .desktop (Terminal=false) や systemd から起動すると stdin が /dev/null になり、
+                    # DHU は即座に EOF を受け取って「quit」と同様に exit 0 で終了してしまいます。
+                    # そこで、何も書き込まずに開いたままのパイプを stdin として渡し、
+                    # ターミナル起動時と同じ「入力待ち」状態を再現します。
+                    # (このパイプは停止時に 'quit' コマンドを送る用途にも使います)
+                    # =========================================================
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1,
+                        env=env,
+                        cwd=dhu_work_dir
+                    )
                     with self._lock:
-                        self.last_error = f"DHU終了コード {exit_code}: {last_dhu_output or '異常終了'}"
+                        self.process = proc
+                        self.status = "RUNNING"
+                        self.last_error = ""
 
-            except Exception as e:
-                self.add_log(f"[例外] DHU起動失敗: {e}")
-                with self._lock:
-                    self.status = "ERROR"
-                    self.last_error = str(e)
-                break
+                    self.add_log(f"[接続] desktop-head-unit を起動しました (PID: {proc.pid})")
+
+                    # 出力ログのリアルタイム読み取り
+                    if proc.stdout:
+                        for line in proc.stdout:
+                            clean_line = line.strip()
+                            if clean_line:
+                                last_dhu_output = clean_line
+                                self.add_log(f"[DHU] {clean_line}")
+
+                    proc.wait()
+                    if proc.stdin is not None:
+                        try:
+                            proc.stdin.close()
+                        except Exception:
+                            pass
+                    exit_code = proc.returncode
+                    elapsed = time.time() - start_time
+                    self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
+
+                    if exit_code != 0:
+                        if last_dhu_output:
+                            self.add_log(f"[エラー詳細] DHU最終出力: {last_dhu_output}")
+                        with self._lock:
+                            self.last_error = f"DHU終了コード {exit_code}: {last_dhu_output or '異常終了'}"
+
+                except Exception as e:
+                    self.add_log(f"[例外] DHU起動失敗: {e}")
+                    with self._lock:
+                        self.status = "ERROR"
+                        self.last_error = str(e)
+                    break
 
             # ユーザーが明示的に停止した場合はループを抜けて終了
             if self.user_stopped:
                 break
 
             # =================================================================
-            # 【スマート復帰判定】
-            # Android Autoの仕様上、起動直後 (約3.5秒以内) にプロセスが落ちる現象は、
-            # スマホが「通常USBモード(MTP等)」から「Android Open Accessory(AOA)モード」へ
-            # 切り替わる際の一瞬のUSB再初期化（バスリセット）によるものです。
-            # この時は10秒待たずに【約1.2秒後】に即座に再起動することでシームレスに接続できます。
+            # 【スマート復帰判定】(USB のみ)
+            # 起動直後 (約3.5秒以内) にプロセスが落ちる現象は、スマホが「通常USBモード(MTP等)」から
+            # 「Android Open Accessory(AOA)モード」へ切り替わる際の一瞬のUSB再初期化によるものです。
+            # この時は10秒待たずに約1.5秒後に即座に再起動することでシームレスに接続できます。
             # =================================================================
-            is_instant_drop = (elapsed < 3.5)
-
-            if is_instant_drop and instant_retry_count < 3:
+            if is_usb and not prep_error and elapsed < 3.5 and instant_retry_count < 3:
                 instant_retry_count += 1
                 self.add_log(f"[モード切替検知] AOAアクセサリ切り替えによる瞬断を検知 ({instant_retry_count}/3回目)。1.5秒後に即時再試行します...")
                 with self._lock:
                     self.status = "RECONNECTING"
                     self.retry_countdown = 1
 
-                # 1.5秒待機（スマホ側が新しいUSBデバイスとしてOSに再認識されるのを待つ）
                 for _ in range(15):
                     if self.user_stopped:
                         break
@@ -569,14 +1083,15 @@ class DHUManager:
             # =================================================================
             # 【要件】通常稼働後の切断は、10秒カウントダウンしながら再接続待機
             # =================================================================
-            instant_retry_count = 0  # 安定稼働後の切断なのでカウンターをリセット
-            self.add_log("[検知] 接続切断（USB抜け等の可能性）。10秒後に自動再接続を試みます...")
+            instant_retry_count = 0
+            if is_usb:
+                self.add_log("[検知] 接続切断（USB抜け等の可能性）。10秒後に自動再接続を試みます...")
+            else:
+                self.add_log("[検知] Wi-Fi 接続が切断されたか、接続できませんでした。10秒後に自動再接続を試みます...")
             with self._lock:
                 self.status = "RECONNECTING"
 
-            # 10秒カウントダウン（1秒ごとにユーザーキャンセルがないか確認）
-            countdown_seconds = 10
-            for sec in range(countdown_seconds, 0, -1):
+            for sec in range(10, 0, -1):
                 if self.user_stopped:
                     self.add_log("[中止] カウントダウン中に停止要求を受信しました。")
                     break
@@ -590,12 +1105,20 @@ class DHUManager:
             if self.user_stopped:
                 break
 
+            # 再接続のたびに最新の接続方式設定を読み直す (自動検出 IP の変化にも追従)
+            config = ConfigManager.load_app_config()
             self.add_log("[再接続] 自動復帰を試行します...")
 
+        self._stop_relay()
+        if not is_usb and config.get("wifi_mode") == "adb":
+            # 方法1 で設定した adb forward を後片付け (他の方式でポートが衝突しないように)
+            ADBHelper(env).remove_forward(ADB_FORWARD_LOCAL_PORT)
         with self._lock:
-            self.status = "IDLE"
+            if self.status != "ERROR":
+                self.status = "IDLE"
             self.process = None
             self.retry_countdown = 0
+            self.connection = {}
 
 
 # グローバルなDHU管理インスタンス
@@ -681,6 +1204,24 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        # API: ネットワーク情報 (テザリング親機 = スマホ IP の自動検出結果)
+        if path == "/api/network":
+            info = NetworkHelper.info()
+            app_config = ConfigManager.load_app_config()
+            info["resolved_phone_ip"] = NetworkHelper.resolve_phone_ip(app_config)
+            self._send_json(200, info)
+            return
+
+        # API: adb で認識されている端末一覧
+        if path == "/api/adb/devices":
+            adb = ADBHelper(build_child_env(ConfigManager.load_app_config().get("dhu_path")))
+            self._send_json(200, {
+                "adb_found": bool(adb.path),
+                "adb_path": adb.path or "",
+                "devices": adb.devices() if adb.path else [],
+            })
+            return
+
         # 静的ファイル（index.html, CSS, JS）の通常配信
         return super().do_GET()
 
@@ -691,7 +1232,9 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
 
         # API: 接続開始
         if path == "/api/start":
-            success, msg = dhu_manager.start()
+            # 画面で選択中の接続方式 (USB / Wi-Fi 方法1 / 方法2) を受け取り、保存してから起動
+            payload = self._read_json_body()
+            success, msg = dhu_manager.start(payload.get("connection") if payload else None)
             self._send_json(200 if success else 400, {
                 "success": success,
                 "message": msg,
@@ -729,6 +1272,52 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
                 "headunit_ini": saved_ini,
                 "app_config": saved_app,
             })
+            return
+
+        # API: スマホ (ヘッドユニットサーバー / ADB) への TCP 疎通確認
+        if path == "/api/probe":
+            payload = self._read_json_body()
+            app_config = ConfigManager.load_app_config()
+            host = str(payload.get("host") or NetworkHelper.resolve_phone_ip(app_config)).strip()
+            port = payload.get("port") or app_config.get("hu_port") or HU_SERVER_PORT
+            if not host:
+                self._send_json(200, {"ok": False, "host": "", "port": port,
+                                      "message": "スマホの IP アドレスが分かりません (テザリング未接続?)"})
+                return
+            ok, msg = NetworkHelper.probe_tcp(host, port)
+            self._send_json(200, {"ok": ok, "host": host, "port": port, "message": msg})
+            return
+
+        # API: adb 操作 (方法1 の事前準備)
+        if path in ("/api/adb/connect", "/api/adb/pair", "/api/adb/tcpip"):
+            payload = self._read_json_body()
+            app_config = ConfigManager.load_app_config()
+            adb = ADBHelper(build_child_env(app_config.get("dhu_path")))
+            if not adb.path:
+                self._send_json(200, {"success": False, "message": "adb が見つかりません (platform-tools をインストールしてください)"})
+                return
+
+            host = str(payload.get("host") or NetworkHelper.resolve_phone_ip(app_config)).strip()
+            try:
+                port = int(payload.get("port") or app_config.get("adb_port") or 5555)
+            except (TypeError, ValueError):
+                port = 5555
+
+            if path == "/api/adb/tcpip":
+                ok, out = adb.tcpip(port)
+            elif not host:
+                ok, out = False, "スマホの IP アドレスが分かりません (テザリング未接続?)"
+            elif path == "/api/adb/connect":
+                ok, out = adb.connect(host, port)
+            else:
+                code = "".join(c for c in str(payload.get("code", "")) if c.isdigit())
+                if not code:
+                    ok, out = False, "ペアリングコード (6桁) を入力してください"
+                else:
+                    ok, out = adb.pair(host, port, code)
+
+            dhu_manager.add_log(f"[ADB] {path.rsplit('/', 1)[-1]}: {out}")
+            self._send_json(200, {"success": ok, "message": out, "devices": adb.devices()})
             return
 
         # API: DHU実行ファイルの存在チェック

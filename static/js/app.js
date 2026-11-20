@@ -165,6 +165,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderStatusUI(data) {
+        setConnectionLocked(["RUNNING", "RECONNECTING", "STARTING"].includes(data.status));
+        const activeConn = data.connection || {};
+        const isWifi = activeConn.type ? activeConn.type === "wifi" : conn.type === "wifi";
+        const reconnectSub = document.getElementById("reconnect-sub");
+        if (reconnectSub) {
+            reconnectSub.textContent = isWifi
+                ? "テザリング (Wi-Fi) 接続とスマホのヘッドユニットサーバーを確認してください。自動的に再接続します。"
+                : "USBケーブルを挿し直してください。自動的にDHUを再起動します。";
+        }
         const badge = elements.sidebarBadge;
         const ring = elements.statusRing;
         const badgeLabel = badge.querySelector(".status-label");
@@ -179,7 +188,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 ring.classList.add("running");
                 badgeLabel.textContent = `接続中 (PID: ${data.pid})`;
                 elements.mainStatusTitle.textContent = "Android Auto 接続中";
-                elements.mainStatusDesc.textContent = `desktop-head-unit が正常に実行されています (PID: ${data.pid})`;
+                elements.mainStatusDesc.textContent = activeConn.label
+                    ? `${activeConn.label}${activeConn.target ? " / " + activeConn.target : ""} で実行中 (PID: ${data.pid})`
+                    : `desktop-head-unit が正常に実行されています (PID: ${data.pid})`;
                 elements.btnStart.disabled = true;
                 elements.btnStop.disabled = false;
                 elements.reconnectBanner.style.display = "none";
@@ -190,7 +201,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 ring.classList.add("reconnecting");
                 badgeLabel.textContent = `再接続待機中 (${data.retry_countdown}s)`;
                 elements.mainStatusTitle.textContent = "接続が切断されました";
-                elements.mainStatusDesc.textContent = "USBケーブルの接続を確認してください。自動的に復帰を試みます。";
+                elements.mainStatusDesc.textContent = data.last_error
+                    ? data.last_error
+                    : (isWifi ? "Wi-Fi 接続を確認してください。自動的に復帰を試みます。"
+                              : "USBケーブルの接続を確認してください。自動的に復帰を試みます。");
                 elements.btnStart.disabled = true;
                 elements.btnStop.disabled = false; // カウントダウン中断のための切断ボタン
 
@@ -224,7 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
             default:
                 badgeLabel.textContent = "停止中";
                 elements.mainStatusTitle.textContent = "待機中 (停止)";
-                elements.mainStatusDesc.textContent = "スマートフォンをUSBで接続し、「接続開始」を押してください。";
+                elements.mainStatusDesc.textContent = idleDescription();
                 elements.btnStart.disabled = false;
                 elements.btnStop.disabled = true;
                 elements.reconnectBanner.style.display = "none";
@@ -252,6 +266,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 div.style.color = "#f87171";
             } else if (line.includes("[検知]") || line.includes("[再接続]")) {
                 div.style.color = "#fbbf24";
+            } else if (line.includes("[Wi-Fi]") || line.includes("[ADB]") || line.includes("[リレー]") || line.includes("[疎通確認]")) {
+                div.style.color = "#93c5fd";
             } else if (line.includes("[接続]")) {
                 div.style.color = "#4ade80";
             }
@@ -269,11 +285,258 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // =========================================================================
+    // 4.5 接続方式 (USB接続 / Wi-Fi接続 [方法1: ADB / 方法2: 直接])
+    // =========================================================================
+    const conn = {
+        card: document.getElementById("conn-card"),
+        tabs: document.querySelectorAll(".conn-tab"),
+        panels: { usb: document.getElementById("panel-usb"), wifi: document.getElementById("panel-wifi") },
+        lockNote: document.getElementById("conn-lock-note"),
+        inputPhoneIp: document.getElementById("input-phone-ip"),
+        inputAdbPort: document.getElementById("input-adb-port"),
+        inputHuPort: document.getElementById("input-hu-port"),
+        inputPairPort: document.getElementById("input-pair-port"),
+        inputPairCode: document.getElementById("input-pair-code"),
+        detailAdb: document.getElementById("detail-adb"),
+        detailDirect: document.getElementById("detail-direct"),
+        result: document.getElementById("wifi-action-result"),
+        deviceList: document.getElementById("adb-device-list"),
+        net: {
+            ssid: document.getElementById("net-ssid"),
+            iface: document.getElementById("net-iface"),
+            localIp: document.getElementById("net-local-ip"),
+            gateway: document.getElementById("net-gateway"),
+            hint: document.getElementById("net-hint"),
+        },
+        type: "usb",
+        locked: false,
+        lastNetwork: null,
+    };
+
+    const radioValue = (name, fallback) => {
+        const el = document.querySelector(`input[name="${name}"]:checked`);
+        return el ? el.value : fallback;
+    };
+    const setRadio = (name, value) => {
+        const el = document.querySelector(`input[name="${name}"][value="${value}"]`);
+        if (el) el.checked = true;
+    };
+
+    // 画面の入力内容 → サーバーに送る接続設定
+    function getConnectionForm() {
+        return {
+            connection_type: conn.type,
+            wifi_mode: radioValue("wifi-mode", "direct"),
+            phone_ip_auto: radioValue("phone-ip-mode", "auto") === "auto",
+            phone_ip: conn.inputPhoneIp.value.trim(),
+            adb_port: parseInt(conn.inputAdbPort.value, 10) || 5555,
+            hu_port: parseInt(conn.inputHuPort.value, 10) || 5277,
+            direct_transport: radioValue("direct-transport", "adb_flag"),
+        };
+    }
+
+    // サーバーの設定値 → 画面
+    function applyConnectionConfig(app) {
+        conn.type = app.connection_type === "wifi" ? "wifi" : "usb";
+        setRadio("wifi-mode", app.wifi_mode === "adb" ? "adb" : "direct");
+        setRadio("phone-ip-mode", app.phone_ip_auto === false ? "manual" : "auto");
+        conn.inputPhoneIp.value = app.phone_ip || "";
+        conn.inputAdbPort.value = app.adb_port || 5555;
+        conn.inputHuPort.value = app.hu_port || 5277;
+        setRadio("direct-transport", app.direct_transport === "relay" ? "relay" : "adb_flag");
+        renderConnectionUI();
+    }
+
+    function phoneIpLabel() {
+        const f = getConnectionForm();
+        if (!f.phone_ip_auto) return f.phone_ip || "(未入力)";
+        const gw = conn.lastNetwork && conn.lastNetwork.resolved_phone_ip;
+        return gw ? `${gw}（自動）` : "自動検出（未検出）";
+    }
+
+    function connectionSummary() {
+        const f = getConnectionForm();
+        if (f.connection_type === "usb") return { label: "USB（AOA）", target: "USB ケーブル" };
+        if (f.wifi_mode === "adb") {
+            return { label: "Wi-Fi 方法1（ADB）", target: `${phoneIpLabel()} : ${f.adb_port}` };
+        }
+        const via = f.direct_transport === "relay" ? "（内蔵リレー）" : "";
+        return { label: `Wi-Fi 方法2（直接）${via}`, target: `${phoneIpLabel()} : ${f.hu_port}` };
+    }
+
+    function renderConnectionUI() {
+        const f = getConnectionForm();
+        conn.tabs.forEach(t => t.classList.toggle("active", t.dataset.conn === conn.type));
+        Object.entries(conn.panels).forEach(([k, el]) => el.classList.toggle("active", k === conn.type));
+        conn.inputPhoneIp.style.display = f.phone_ip_auto ? "none" : "block";
+        conn.detailAdb.classList.toggle("active", f.wifi_mode === "adb");
+        conn.detailDirect.classList.toggle("active", f.wifi_mode === "direct");
+
+        const s = connectionSummary();
+        const sumConn = document.getElementById("summary-connection");
+        const sumTarget = document.getElementById("summary-target");
+        if (sumConn) sumConn.textContent = s.label;
+        if (sumTarget) sumTarget.textContent = s.target;
+        if (state.status === "IDLE" || state.status === "ERROR") {
+            elements.mainStatusDesc.textContent = idleDescription();
+        }
+    }
+
+    function idleDescription() {
+        if (conn.type === "usb") return "スマートフォンを USB で接続し、「接続開始」を押してください。";
+        const f = getConnectionForm();
+        const method = f.wifi_mode === "adb" ? "方法1（ADB）" : "方法2（ヘッドユニットサーバーへ直接）";
+        return `Wi-Fi ${method} で接続します。スマホで「ヘッドユニットサーバーを起動」してから「接続開始」を押してください。`;
+    }
+
+    // 設定の自動保存 (入力が落ち着いてから 0.6 秒後)
+    let saveTimer = null;
+    function saveConnectionSoon() {
+        renderConnectionUI();
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            apiRequest("/api/config", "POST", { app_config: getConnectionForm() });
+        }, 600);
+    }
+
+    conn.tabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            if (conn.locked) return;
+            conn.type = tab.dataset.conn;
+            saveConnectionSoon();
+            if (conn.type === "wifi") refreshNetwork();
+        });
+    });
+
+    document.querySelectorAll('input[name="wifi-mode"], input[name="phone-ip-mode"], input[name="direct-transport"]')
+        .forEach(el => el.addEventListener("change", saveConnectionSoon));
+    document.querySelectorAll('input[name="wifi-mode"]').forEach(el => el.addEventListener("change", () => {
+        if (el.checked && el.value === "adb") refreshDevices();
+    }));
+    [conn.inputPhoneIp, conn.inputAdbPort, conn.inputHuPort]
+        .forEach(el => el.addEventListener("input", saveConnectionSoon));
+
+    // 接続中は接続方式を変更できないようにロック
+    function setConnectionLocked(locked) {
+        if (conn.locked === locked) return;
+        conn.locked = locked;
+        conn.card.classList.toggle("locked", locked);
+        conn.lockNote.style.display = locked ? "block" : "none";
+        conn.card.querySelectorAll("input, .conn-tab").forEach(el => { el.disabled = locked; });
+    }
+
+    // ---- 結果表示 ----
+    function showResult(ok, message) {
+        conn.result.className = `wifi-result show ${ok ? "ok" : "ng"}`;
+        conn.result.textContent = `${ok ? "✓" : "✕"} ${message}`;
+    }
+
+    // ---- ネットワーク情報 (テザリング親機の自動検出) ----
+    async function refreshNetwork() {
+        const data = await apiRequest("/api/network");
+        if (!data || data.error) return;
+        conn.lastNetwork = data;
+        conn.net.ssid.textContent = data.ssid || (data.wireless ? "(取得不可)" : "--");
+        conn.net.iface.textContent = data.iface ? `${data.iface}${data.wireless ? "（Wi-Fi）" : "（有線/その他）"}` : "--";
+        conn.net.localIp.textContent = data.local_ip || "--";
+        conn.net.gateway.textContent = data.gateway || "--";
+
+        if (!data.detected) {
+            conn.net.hint.textContent = "⚠️ デフォルトゲートウェイが見つかりません。Linux 端末をスマホのテザリング (Wi-Fi アクセスポイント) に接続してください。";
+        } else if (!data.wireless) {
+            conn.net.hint.textContent = `⚠️ 現在の経路は Wi-Fi ではありません (${data.iface})。テザリング運用では Wi-Fi でスマホに接続し、必要なら有線LANを外してください。`;
+        } else {
+            conn.net.hint.textContent = `テザリング接続中であれば、ゲートウェイ ${data.gateway} がスマホ本体の IP アドレスです（「自動」を選ぶとこの値を使います）。`;
+        }
+        renderConnectionUI();
+    }
+
+    document.getElementById("btn-net-refresh").addEventListener("click", refreshNetwork);
+
+    // ---- 方法1: ADB 操作 ----
+    function renderDevices(devices) {
+        if (!devices || devices.length === 0) {
+            conn.deviceList.innerHTML = '<div class="text-muted">adb で認識されている端末はありません。</div>';
+            return;
+        }
+        conn.deviceList.innerHTML = "";
+        devices.forEach(d => {
+            const row = document.createElement("div");
+            row.className = "adb-device";
+            const stateClass = d.state === "device" ? "badge-success" : "badge-danger";
+            row.innerHTML = `<span class="badge badge-info"></span>
+                             <code></code><span class="adb-model"></span><span class="badge ${stateClass}"></span>`;
+            const [t, serial, model, st] = row.children;
+            t.textContent = d.transport === "wifi" ? "Wi-Fi" : "USB";
+            serial.textContent = d.serial;
+            model.textContent = d.model || "";
+            st.textContent = d.state === "device" ? "接続OK" : d.state;
+            conn.deviceList.appendChild(row);
+        });
+    }
+
+    async function refreshDevices() {
+        const data = await apiRequest("/api/adb/devices");
+        if (!data || data.error) return;
+        if (!data.adb_found) {
+            conn.deviceList.innerHTML = '<div class="text-muted">⚠️ adb が見つかりません。Android SDK の platform-tools をインストールしてください。</div>';
+            return;
+        }
+        renderDevices(data.devices);
+    }
+
+    async function adbAction(endpoint, body, button) {
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = "実行中...";
+        const res = await apiRequest(endpoint, "POST", body);
+        button.textContent = original;
+        button.disabled = conn.locked;
+        showResult(!!res.success, res.message || res.error || "応答がありません");
+        if (res.devices) renderDevices(res.devices);
+    }
+
+    document.getElementById("btn-adb-tcpip").addEventListener("click", (e) =>
+        adbAction("/api/adb/tcpip", { port: getConnectionForm().adb_port }, e.currentTarget));
+
+    document.getElementById("btn-adb-connect").addEventListener("click", (e) => {
+        const f = getConnectionForm();
+        adbAction("/api/adb/connect", { host: f.phone_ip_auto ? "" : f.phone_ip, port: f.adb_port }, e.currentTarget);
+    });
+
+    document.getElementById("btn-adb-pair").addEventListener("click", (e) => {
+        const f = getConnectionForm();
+        adbAction("/api/adb/pair", {
+            host: f.phone_ip_auto ? "" : f.phone_ip,
+            port: parseInt(conn.inputPairPort.value, 10) || 0,
+            code: conn.inputPairCode.value.trim(),
+        }, e.currentTarget);
+    });
+
+    document.getElementById("btn-adb-devices").addEventListener("click", refreshDevices);
+
+    // ---- 方法2: ヘッドユニットサーバー疎通確認 ----
+    document.getElementById("btn-probe").addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        const f = getConnectionForm();
+        btn.disabled = true;
+        const res = await apiRequest("/api/probe", "POST", { host: f.phone_ip_auto ? "" : f.phone_ip, port: f.hu_port });
+        btn.disabled = conn.locked;
+        showResult(!!res.ok, res.ok
+            ? `${res.message}。ヘッドユニットサーバーが応答しています。「接続開始」で接続できます。`
+            : `${res.message || res.error}。スマホで「ヘッドユニットサーバーを起動」しているか確認してください。`);
+    });
+
+    // Wi-Fi 選択中は 15 秒ごとにネットワーク状態を更新 (テザリングの接続・切断に追従)
+    setInterval(() => { if (conn.type === "wifi" && !document.hidden) refreshNetwork(); }, 15000);
+
+    // =========================================================================
     // 5. コントロールボタン操作 (接続開始 / 切断)
     // =========================================================================
     elements.btnStart.addEventListener("click", async () => {
         elements.btnStart.disabled = true;
-        const res = await apiRequest("/api/start", "POST");
+        // 画面で選択中の接続方式を一緒に送る (サーバー側で保存してから起動)
+        const res = await apiRequest("/api/start", "POST", { connection: getConnectionForm() });
         if (res.success) {
             showToast("Android Auto (DHU) を起動しました");
         } else {
@@ -299,6 +562,13 @@ document.addEventListener("DOMContentLoaded", () => {
         state.config = data;
         const ini = data.headunit_ini || {};
         const app = data.app_config || {};
+
+        // 接続方式 (USB / Wi-Fi)
+        applyConnectionConfig(app);
+        if (conn.type === "wifi") {
+            refreshNetwork();
+            refreshDevices();
+        }
 
         // アプリ設定 (DHUパス)
         elements.inputDhuPath.value = app.dhu_path || "";

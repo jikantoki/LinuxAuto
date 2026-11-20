@@ -1191,6 +1191,225 @@ input:checked + .slider:before {
     opacity: 1;
 }
 
+
+/* ==========================================================================
+   接続方式カード (USB接続 / Wi-Fi接続)
+   ========================================================================== */
+.conn-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.conn-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 1rem 1.25rem;
+    background-color: var(--bg-base);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: var(--transition);
+}
+
+.conn-tab:hover:not(:disabled) {
+    border-color: var(--border-light);
+    color: var(--text-primary);
+}
+
+.conn-tab.active {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(30, 58, 138, 0.22));
+    color: var(--text-primary);
+    box-shadow: 0 0 18px var(--primary-glow);
+}
+
+.conn-tab.active svg { color: var(--primary); }
+.conn-tab:disabled { cursor: not-allowed; }
+.conn-tab:disabled:not(.active) { opacity: 0.45; }
+
+.conn-tab-text { display: flex; flex-direction: column; }
+.conn-tab-title { font-size: 1.1rem; font-weight: 700; }
+.conn-tab-sub { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem; }
+
+.conn-lock-note {
+    display: none;
+    margin-top: 0.85rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--radius-sm);
+    background: rgba(245, 158, 11, 0.1);
+    border-left: 3px solid var(--warning);
+    color: #fde68a;
+    font-size: 0.85rem;
+}
+
+.conn-card.locked .mode-card,
+.conn-card.locked .radio-pill { cursor: not-allowed; opacity: 0.7; }
+
+.conn-panel { display: none; margin-top: 1.25rem; }
+.conn-panel.active { display: block; animation: fadeIn 0.25s ease; }
+
+.conn-panel-lead {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.7;
+}
+
+.conn-panel code, .mode-card code {
+    background: var(--bg-base);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+    color: #93c5fd;
+}
+
+/* ネットワーク状態 */
+.net-info {
+    background-color: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.net-info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.net-info-header h4 { font-size: 0.95rem; }
+
+.net-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+}
+
+.net-item { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.net-item .label { font-size: 0.75rem; color: var(--text-muted); }
+.net-item .value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92rem;
+    overflow-wrap: anywhere;
+}
+.net-item .value.highlight { color: var(--success); font-weight: 700; }
+
+.conn-panel .form-group { margin-bottom: 1.25rem; }
+.conn-panel .form-group > label { display: block; margin-bottom: 0.5rem; }
+#net-hint { margin-top: 0.75rem; }
+
+/* 方法の選択カード */
+.mode-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.mode-card {
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem;
+    background-color: var(--bg-base);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.mode-card:hover { border-color: var(--border-light); }
+
+.mode-card:has(input:checked) {
+    border-color: var(--primary);
+    background-color: rgba(59, 130, 246, 0.08);
+}
+
+.mode-card input { margin-top: 0.25rem; accent-color: var(--primary); }
+
+.mode-card-body strong { display: block; margin: 0.4rem 0 0.3rem; font-size: 0.98rem; }
+.mode-card-body p { font-size: 0.83rem; color: var(--text-secondary); line-height: 1.6; }
+
+.mode-card-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.mode-no {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    color: #fff;
+}
+
+/* 方法ごとの詳細設定 */
+.mode-detail {
+    display: none;
+    border-left: 3px solid var(--primary);
+    padding: 0.25rem 0 0.25rem 1.1rem;
+    margin-top: 0.5rem;
+}
+.mode-detail.active { display: block; animation: fadeIn 0.25s ease; }
+
+.mode-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+}
+
+.pair-box {
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-surface-elevated);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+.pair-box summary { cursor: pointer; font-size: 0.88rem; color: var(--text-secondary); }
+.pair-box[open] summary { margin-bottom: 0.5rem; }
+
+.pair-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+.pair-fields .form-input { width: 150px; }
+
+.adb-device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+}
+.adb-device {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.75rem;
+    background-color: var(--bg-base);
+    border-radius: var(--radius-sm);
+}
+.adb-model { color: var(--text-secondary); flex: 1; }
+
+/* 操作結果メッセージ */
+.wifi-result {
+    display: none;
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.88rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.wifi-result.show { display: block; }
+.wifi-result.ok { background: rgba(16, 185, 129, 0.1); border-left: 4px solid var(--success); color: #a7f3d0; }
+.wifi-result.ng { background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--danger); color: #fecaca; }
+
 /* レスポンシブ対応 */
 @media (max-width: 900px) {
     .app-layout {
@@ -1218,6 +1437,12 @@ input:checked + .slider:before {
     }
     .dashboard-grid {
         grid-template-columns: 1fr;
+    }
+    .conn-tabs, .mode-cards {
+        grid-template-columns: 1fr;
+    }
+    .net-grid {
+        grid-template-columns: 1fr 1fr;
     }
     .settings-grid {
         grid-template-columns: 1fr;
