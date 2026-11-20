@@ -143,6 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!data || data.error) return
 
     state.status = data.status
+    state.stopReason = data.stop_reason || ''
     state.isAlive = data.is_alive
     state.retryCountdown = data.retry_countdown || 0
     state.logs = data.logs || []
@@ -169,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderStatusUI(data) {
     setConnectionLocked(
-      ['RUNNING', 'RECONNECTING', 'STARTING'].includes(data.status),
+      ['RUNNING', 'RECONNECTING', 'STARTING', 'CHECKING'].includes(data.status),
     )
     const activeConn = data.connection || {}
     const isWifi = activeConn.type
@@ -244,6 +245,16 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.reconnectBanner.style.display = 'none'
         break
 
+      case 'CHECKING':
+        badgeLabel.textContent = '終了理由を確認中...'
+        elements.mainStatusTitle.textContent = '接続の終了を確認中...'
+        elements.mainStatusDesc.textContent =
+          'DHU が終了しました。ウィンドウを閉じたのか、接続が切れたのかを確認しています。'
+        elements.btnStart.disabled = true
+        elements.btnStop.disabled = false
+        elements.reconnectBanner.style.display = 'none'
+        break
+
       case 'STARTING':
         badgeLabel.textContent = '起動処理中...'
         elements.mainStatusTitle.textContent = 'DHU起動処理中...'
@@ -256,7 +267,9 @@ document.addEventListener('DOMContentLoaded', () => {
       default:
         badgeLabel.textContent = '停止中'
         elements.mainStatusTitle.textContent = '待機中 (停止)'
-        elements.mainStatusDesc.textContent = idleDescription()
+        // 自動復帰せずに停止した場合 (DHU のウィンドウを閉じた等) は、その理由を表示
+        elements.mainStatusDesc.textContent =
+          data.stop_reason || idleDescription()
         elements.btnStart.disabled = false
         elements.btnStop.disabled = true
         elements.reconnectBanner.style.display = 'none'
@@ -295,7 +308,8 @@ document.addEventListener('DOMContentLoaded', () => {
         line.includes('[ADB]') ||
         line.includes('[リレー]') ||
         line.includes('[疎通確認]') ||
-        line.includes('[KDE]')
+        line.includes('[KDE]') ||
+        line.includes('[判定]')
       ) {
         div.style.color = '#93c5fd'
       } else if (line.includes('[接続]')) {
@@ -433,7 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sumConn) sumConn.textContent = s.label
     if (sumTarget) sumTarget.textContent = s.target
     if (state.status === 'IDLE' || state.status === 'ERROR') {
-      elements.mainStatusDesc.textContent = idleDescription()
+      elements.mainStatusDesc.textContent =
+        (state.status === 'IDLE' && state.stopReason) || idleDescription()
     }
   }
 

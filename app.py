@@ -59,6 +59,10 @@ ADB_FORWARD_LOCAL_PORT = 5277
 RELAY_LOCAL_PORT = 5277
 # Wi-Fi 接続時、DHU 起動からスマホの応答 (ハンドシェイク) を待つ秒数
 HANDSHAKE_TIMEOUT_SEC = 20
+# 終了理由の判定: DHU 終了後、USB のスマホが (AOA モード解除の再認識を経て) 見えるまで待つ秒数
+USB_PRESENCE_WAIT_SEC = 5.0
+# DHU の出力のうち「通信エラーで終了した」ことを示す文字列 (Wi-Fi で実測: "[E]: Failed to read from transport - disconnect.")
+TRANSPORT_ERROR_MARKERS = ("[E]", "Failed to read from transport", "disconnect", "Connection reset", "Broken pipe")
 # DHU が出力する色付けエスケープシーケンス (例: \x1b[38;5;34m) を除去する正規表現
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9;]+m")
 
@@ -147,6 +151,7 @@ class ConfigManager:
             "hu_port": HU_SERVER_PORT,       # ヘッドユニットサーバーのポート
             "direct_transport": "adb_flag",  # 方法1: "adb_flag" (--adb=IP:5277) | "relay" (内蔵リレー)
             "kde_focus_rule": True,          # KDE で DHU のウィンドウにフォーカス設定のウィンドウルールを自動登録
+            "stop_on_window_close": True,    # DHU のウィンドウを自分で閉じた場合は自動復帰しない
         }
 
         if not APP_CONFIG_PATH.exists():
@@ -208,7 +213,7 @@ class ConfigManager:
             clean["hu_port"] = to_port(data["hu_port"], HU_SERVER_PORT)
         if "direct_transport" in data:
             clean["direct_transport"] = "relay" if data["direct_transport"] == "relay" else "adb_flag"
-        for key in ("auto_retry", "kde_focus_rule"):
+        for key in ("auto_retry", "kde_focus_rule", "stop_on_window_close"):
             if key in data:
                 clean[key] = to_bool(data[key])
         return clean
@@ -381,6 +386,37 @@ def build_child_env(dhu_path=None):
     env["PATH"] = os.pathsep.join(path_list)
     env["HOME"] = str(HOME_DIR)
     return env
+
+
+# =============================================================================
+# USB 接続状態の確認 (終了理由の判定用)
+# =============================================================================
+# DHU のログからスマホの名前・シリアル番号・ベンダーIDを読み取る正規表現
+#   例: Device 'vivo V2246 10AD772N0K001XP' (vid=2d95, pid=6003) supports AOAPv2, ...
+#   例: Found device 'vivo V2246 10AD772N0K001XP' in accessory mode (vid=18d1, pid=2d01).
+USB_DEVICE_LINE_RE = re.compile(r"[Dd]evice '(?P<name>[^']*?)\s(?P<serial>\S+)'.*?\(vid=(?P<vid>[0-9a-fA-F]{4}), pid=(?P<pid>[0-9a-fA-F]{4})\)")
+# Android Open Accessory モード中のスマホが名乗る Google のベンダーID
+AOA_VENDOR_ID = "18d1"
+
+
+def usb_device_present(serial=None, vendor_ids=()):
+    """
+    指定したシリアル番号 (またはベンダーID) の USB 機器が接続されているかを
+    /sys/bus/usb/devices から確認します (外部コマンド不要)。
+    """
+    for dev in glob.glob("/sys/bus/usb/devices/*"):
+        try:
+            if serial:
+                with open(os.path.join(dev, "serial"), "r") as f:
+                    if f.read().strip() == serial:
+                        return True
+            elif vendor_ids:
+                with open(os.path.join(dev, "idVendor"), "r") as f:
+                    if f.read().strip().lower() in vendor_ids:
+                        return True
+        except OSError:
+            continue
+    return False
 
 
 # =============================================================================
@@ -1028,11 +1064,12 @@ class DHUManager:
     def __init__(self):
         self._lock = threading.Lock() # スレッドセーフのためのミューテックス（Javaの synchronized に相当）
         self.process = None           # 起動中の subprocess.Popen オブジェクト
-        self.status = "IDLE"          # "IDLE" | "STARTING" | "RUNNING" | "RECONNECTING" | "ERROR"
+        self.status = "IDLE"          # "IDLE" | "STARTING" | "RUNNING" | "CHECKING" | "RECONNECTING" | "ERROR"
         self.user_stopped = False     # ユーザーの明示的な停止操作かどうかを識別するフラグ
         self.last_error = ""
         self.logs = []                # 最新のログ行を保持（リングバッファ）
-        self.max_logs = 200
+        self.max_logs = 500           # ALSA の警告は省略するため、実質的に多くの接続履歴を残せる
+        self.stop_reason = ""         # 自動復帰せずに停止した理由 (画面表示用)
         self.retry_countdown = 0      # 再接続カウントダウン（残り秒数）
         self.monitor_thread = None
         self.relay = None             # 方法1 (リレー経由) 用の TCPRelay
@@ -1062,6 +1099,7 @@ class DHUManager:
                 "pid": self.process.pid if is_alive else None,
                 "retry_countdown": self.retry_countdown,
                 "last_error": self.last_error,
+                "stop_reason": self.stop_reason,
                 "logs": list(self.logs),
                 "run_mode": "service" if is_running_as_service() else "manual",
                 "connection": dict(self.connection),
@@ -1069,7 +1107,7 @@ class DHUManager:
 
     def is_busy(self):
         with self._lock:
-            return self.status in ("STARTING", "RUNNING", "RECONNECTING")
+            return self.status in ("STARTING", "RUNNING", "RECONNECTING", "CHECKING")
 
     def start(self, options=None):
         """
@@ -1077,12 +1115,13 @@ class DHUManager:
         すでに起動している場合は無視します。
         """
         with self._lock:
-            if self.status in ("STARTING", "RUNNING", "RECONNECTING"):
+            if self.status in ("STARTING", "RUNNING", "RECONNECTING", "CHECKING"):
                 return True, "すでに実行中です。"
             self.user_stopped = False
             self.status = "STARTING"
             self.retry_countdown = 0
             self.last_error = ""
+            self.stop_reason = ""
 
         if options:
             config = ConfigManager.save_app_config(options)
@@ -1184,6 +1223,52 @@ class DHUManager:
                 "[警告] デスクトップセッション (DISPLAY / WAYLAND_DISPLAY) が見つかりません。"
                 "デスクトップにログインしてから接続してください。"
             )
+
+    # -------------------------------------------------------------------------
+    # 終了理由の判定
+    # -------------------------------------------------------------------------
+    def _classify_exit(self, exit_code, session, is_usb, config, env):
+        """
+        DHU が終了した理由を判定します。戻り値: ("user_closed" | "disconnected", 説明)
+
+        DHU は「ウィンドウを閉じた」場合も「通信が切れた」場合も終了コード 0 で終わり、
+        終了時の出力にも区別できる情報が出ないことがあるため、終了後の実際の接続状態を確認します。
+          - USB  : スマホがまだ USB に接続されていれば「ウィンドウを閉じた」、いなければ「ケーブルが抜けた」
+          - Wi-Fi: 通信エラーが出ておらず、スマホ (テザリング親機) への経路が残っていれば「ウィンドウを閉じた」
+        判断できない場合は、従来どおり自動復帰する側 (disconnected) に倒します。
+        """
+        if exit_code not in (0, None):
+            return "disconnected", f"DHU が異常終了しました (終了コード {exit_code}) → 自動復帰します"
+        if session.get("transport_error"):
+            return "disconnected", f"通信エラーを検出しました ({session['transport_error'][:80]}) → 自動復帰します"
+        if session.get("handshake_at") is None:
+            return "disconnected", "スマホとの接続が確立する前に終了しました → 自動復帰します"
+
+        if is_usb:
+            serial, vid = session.get("usb_serial"), session.get("usb_vid")
+            if not serial and not vid:
+                return "disconnected", "スマホの USB 情報を取得できなかったため判定できません → 自動復帰します"
+            deadline = time.time() + USB_PRESENCE_WAIT_SEC
+            while time.time() < deadline and not self.user_stopped:
+                # DHU 終了後、スマホは AOA モードを抜けて USB 機器として再認識されるため少し待ちながら確認する
+                if usb_device_present(serial=serial) if serial else usb_device_present(vendor_ids=(vid, AOA_VENDOR_ID)):
+                    return "user_closed", f"スマホ ({serial or vid}) は USB に接続されたままです → ウィンドウが閉じられたと判断しました"
+                time.sleep(0.3)
+            return "disconnected", f"スマホ ({serial or vid}) が USB から見えなくなりました → ケーブルが抜けたと判断し、自動復帰します"
+
+        # ---- Wi-Fi ----
+        routes = NetworkHelper.get_default_routes()
+        if not routes:
+            return "disconnected", "ネットワークの経路がなくなりました (テザリング切断) → 自動復帰します"
+        if config.get("phone_ip_auto", True):
+            expected = self.connection.get("phone_ip", "")
+            if expected and expected not in [r["gateway"] for r in routes]:
+                return "disconnected", f"スマホ ({expected}) への経路がなくなりました (テザリング切断) → 自動復帰します"
+        if config.get("wifi_mode") == "adb":
+            adb = ADBHelper(env)
+            if adb.path and not any(d["transport"] == "wifi" and d["state"] == "device" for d in adb.devices()):
+                return "disconnected", "Wi-Fi ADB の接続がなくなりました → 自動復帰します"
+        return "user_closed", "通信エラーがなく、スマホへの接続も保たれています → ウィンドウが閉じられたと判断しました"
 
     # -------------------------------------------------------------------------
     # KDE ウィンドウルール (タッチが反応しない問題の対策)
@@ -1340,7 +1425,7 @@ class DHUManager:
 
         with self._lock:
             self.connection = {
-                "type": "wifi", "wifi_mode": "adb",
+                "type": "wifi", "wifi_mode": "adb", "phone_ip": host,
                 "label": "Wi-Fi 方法2 (ADB + ポートフォワード)",
                 "target": f"{serial} → localhost:{ADB_FORWARD_LOCAL_PORT}",
             }
@@ -1372,7 +1457,7 @@ class DHUManager:
                 self.relay = relay
             with self._lock:
                 self.connection = {
-                    "type": "wifi", "wifi_mode": "direct",
+                    "type": "wifi", "wifi_mode": "direct", "phone_ip": host,
                     "label": "Wi-Fi 方法1 (内蔵リレー経由)",
                     "target": f"localhost:{RELAY_LOCAL_PORT} → {host}:{hu_port}",
                 }
@@ -1380,7 +1465,7 @@ class DHUManager:
 
         with self._lock:
             self.connection = {
-                "type": "wifi", "wifi_mode": "direct",
+                "type": "wifi", "wifi_mode": "direct", "phone_ip": host,
                 "label": "Wi-Fi 方法1 (ヘッドユニットサーバーへ直接)",
                 "target": f"{host}:{hu_port}",
             }
@@ -1407,6 +1492,9 @@ class DHUManager:
 
         while not self.user_stopped:
             elapsed = 0.0
+            exit_code = None
+            # 終了理由の判定に使う、この接続試行の記録
+            session = {"lines": 0, "transport_error": "", "handshake_at": None, "usb_serial": "", "usb_vid": ""}
             cmd, prep_error = self._prepare_connection(dhu_path, config, env)
 
             if prep_error:
@@ -1465,19 +1553,42 @@ class DHUManager:
                         watchdog.start()
 
                     # 出力ログのリアルタイム読み取り
+                    alsa_count = 0
                     if proc.stdout:
                         for line in proc.stdout:
                             clean_line = ANSI_ESCAPE_RE.sub("", line).strip()
+                            if not clean_line:
+                                continue
+                            # 音声デバイス設定の警告 (ALSA lib ...) は大量に出て他のログを押し流すため、
+                            # 画面のログには件数だけを 1 行で表示する (サービスのジャーナルには全文を残す)
+                            if clean_line.startswith("ALSA lib"):
+                                alsa_count += 1
+                                print(f"[DHU] {clean_line}", flush=True)
+                                continue
+                            if alsa_count:
+                                self.add_log(f"[DHU] (音声デバイスの警告 ALSA lib … を {alsa_count} 行省略しました。動作には影響しません)")
+                                alsa_count = 0
                             if clean_line:
                                 last_dhu_output = clean_line
                                 self.add_log(f"[DHU] {clean_line}")
+                                session["lines"] += 1
+                                if any(m in clean_line for m in TRANSPORT_ERROR_MARKERS):
+                                    session["transport_error"] = clean_line
+                                m_dev = USB_DEVICE_LINE_RE.search(clean_line)
+                                if m_dev:
+                                    session["usb_serial"] = m_dev.group("serial")
+                                    if m_dev.group("vid").lower() != AOA_VENDOR_ID:
+                                        session["usb_vid"] = m_dev.group("vid").lower()
                                 if "Phone reported protocol version" in clean_line and not handshake["ok"]:
                                     handshake["ok"] = True
+                                    session["handshake_at"] = time.time() - start_time
                                     with self._lock:
                                         self.connection.pop("warning", None)
                                     if not is_usb:
                                         self.add_log("[接続] スマホとのハンドシェイクに成功しました")
 
+                    if alsa_count:
+                        self.add_log(f"[DHU] (音声デバイスの警告 ALSA lib … を {alsa_count} 行省略しました。動作には影響しません)")
                     if watchdog is not None:
                         watchdog.cancel()
 
@@ -1532,6 +1643,20 @@ class DHUManager:
                 if self.user_stopped:
                     break
                 continue
+
+            # =================================================================
+            # 【終了理由の判定】自分でウィンドウを閉じたのか、強制的に切断されたのか
+            # =================================================================
+            if not prep_error:
+                with self._lock:
+                    self.status = "CHECKING"   # 終了理由を確認中 (USB は最大数秒、スマホの再認識を待つ)
+                verdict, why = self._classify_exit(exit_code, session, is_usb, config, env)
+                self.add_log(f"[判定] {why}")
+                if verdict == "user_closed" and config.get("stop_on_window_close", True):
+                    with self._lock:
+                        self.stop_reason = "DHU のウィンドウが閉じられたため、接続を終了しました (自動復帰はしません)。"
+                    self.add_log("[状態] DHU のウィンドウが閉じられたため停止しました。再接続するには「接続開始」を押してください。")
+                    break
 
             # =================================================================
             # 【要件】通常稼働後の切断は、10秒カウントダウンしながら再接続待機
