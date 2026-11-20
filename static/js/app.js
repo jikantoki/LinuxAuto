@@ -148,6 +148,20 @@ document.addEventListener("DOMContentLoaded", () => {
         // UIへの反映
         renderStatusUI(data);
         renderLogs(data.logs);
+        renderRunMode(data.run_mode);
+    }
+
+    // サーバーの起動方式 (サービス / 手動) を導入ガイドに表示
+    function renderRunMode(runMode) {
+        const label = document.getElementById("run-mode-label");
+        if (!label) return;
+        if (runMode === "service") {
+            label.textContent = "サービス (systemd) で常駐中 ✔ 設定済みです";
+        } else if (runMode === "manual") {
+            label.textContent = "手動起動 (start.sh など) — 下の手順でサービス登録できます";
+        } else {
+            label.textContent = "不明 (サーバーを更新後に再起動してください)";
+        }
     }
 
     function renderStatusUI(data) {

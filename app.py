@@ -25,6 +25,7 @@ pip等によるサードパーティ製ライブラリを一切使わず、Pytho
 
 import os
 import sys
+import errno
 import json
 import time
 import shutil
@@ -215,6 +216,65 @@ class ConfigManager:
 
 
 # =============================================================================
+# 実行モード判定 & グラフィカルセッション環境変数の取得
+# =============================================================================
+# DHU がウィンドウ・音声を出すために必要なデスクトップセッション側の環境変数
+SESSION_ENV_KEYS = [
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "XDG_RUNTIME_DIR",
+    "XDG_SESSION_TYPE",
+    "XDG_CURRENT_DESKTOP",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "PULSE_SERVER",
+]
+
+
+def is_running_as_service():
+    """
+    systemd のサービスとして起動されているかを判定します。
+    systemd は起動したプロセスに INVOCATION_ID を必ず付与するため、それで判別します。
+    """
+    return bool(os.environ.get("INVOCATION_ID"))
+
+
+def get_systemd_user_session_env():
+    """
+    `systemctl --user show-environment` から、ログイン中のデスクトップセッションが
+    systemd ユーザーマネージャーに登録した環境変数 (DISPLAY 等) を取得します。
+
+    【なぜ必要か】
+    ユーザーサービスはデスクトップにログインする前に起動することがあるため、
+    サーバー起動時点の os.environ には DISPLAY / WAYLAND_DISPLAY が含まれていません。
+    GNOME / KDE Plasma はログイン時にこれらを systemd に登録するので、
+    DHU を起動する「その瞬間」に最新の値を取り直すことで確実に画面を出せます。
+    """
+    result = {}
+    try:
+        out = subprocess.run(
+            ["systemctl", "--user", "show-environment"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+            timeout=3,
+        ).stdout
+    except Exception:
+        return result
+
+    for line in out.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in SESSION_ENV_KEYS:
+            # systemd は値を $'...' 形式でエスケープする場合があるため簡易的に剥がす
+            if value.startswith("$'") and value.endswith("'"):
+                value = value[2:-1]
+            result[key] = value
+    return result
+
+
+# =============================================================================
 # DHUプロセス＆再接続監視コントローラー (Process Manager)
 # =============================================================================
 class DHUManager:
@@ -262,6 +322,7 @@ class DHUManager:
                 "retry_countdown": self.retry_countdown,
                 "last_error": self.last_error,
                 "logs": list(self.logs),
+                "run_mode": "service" if is_running_as_service() else "manual",
             }
 
     def start(self):
@@ -345,6 +406,30 @@ class DHUManager:
         self.add_log("[状態] 停止しました。")
         return True, "停止しました。"
 
+    def _apply_session_env(self, env):
+        """
+        DHU に渡す環境変数へ、デスクトップセッションの DISPLAY 等を反映します。
+        - サービス起動時: systemd に登録された最新のセッション値で上書き
+          (ログアウト→再ログインで DISPLAY が変わっても追従するため)
+        - 手動起動時   : 足りない値だけを補完 (ターミナルの値を優先)
+        """
+        session_env = get_systemd_user_session_env()
+        as_service = is_running_as_service()
+        for key, value in session_env.items():
+            if as_service or not env.get(key):
+                env[key] = value
+
+        if not env.get("XDG_RUNTIME_DIR"):
+            runtime_dir = f"/run/user/{os.getuid()}"
+            if os.path.isdir(runtime_dir):
+                env["XDG_RUNTIME_DIR"] = runtime_dir
+
+        if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+            self.add_log(
+                "[警告] デスクトップセッション (DISPLAY / WAYLAND_DISPLAY) が見つかりません。"
+                "デスクトップにログインしてから接続してください。"
+            )
+
     def _run_and_monitor_loop(self, dhu_path):
         """
         【重要ロジック】
@@ -380,6 +465,7 @@ class DHUManager:
 
         env["PATH"] = os.pathsep.join(path_list)
         env["HOME"] = str(HOME_DIR)
+        self._apply_session_env(env)
 
         while not self.user_stopped:
             cmd = [dhu_path, "--usb"]
@@ -698,14 +784,29 @@ def main():
         STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
     server_address = (args.host, args.port)
-    httpd = ThreadingHTTPServer(server_address, LinuxAutoHTTPHandler)
-
     url = f"http://{args.host}:{args.port}"
+
+    try:
+        httpd = ThreadingHTTPServer(server_address, LinuxAutoHTTPHandler)
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            # すでにサービス等でサーバーが動いている場合は二重起動せず、画面だけ開いて終了する
+            print(f"[情報] ポート {args.port} は既に使用中です。Linux Auto サーバーは起動済みと判断します。")
+            if not args.no_browser:
+                print(f"[情報] 画面を開きます: {url}")
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+            sys.exit(0)
+        raise
+
     print("=" * 60)
     print("   Linux Auto - Android Auto Headunit Support")
     print("   エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)")
     print("=" * 60)
     print(f" WebUIサーバー起動完了: {url}")
+    print(f" 起動モード: {'サービス (systemd)' if is_running_as_service() else '手動起動'}")
     if args.no_browser:
         print(" [情報] --no-browser オプション指定のため、ブラウザ自動起動をスキップしました。")
     print(" 終了するには Ctrl+C を押してください。")
@@ -723,11 +824,12 @@ def main():
         threading.Thread(target=open_browser, daemon=True).start()
 
     # シグナルハンドラ（Ctrl+Cでの正常終了処理）
+    # ※ httpd.shutdown() を serve_forever() と同じスレッド(シグナルハンドラ)から呼ぶと
+    #    デッドロックして終了できないため、KeyboardInterrupt に変換して finally 節で後始末します。
+    #    (systemctl --user stop は SIGTERM を送るので、この処理で DHU も正しく停止します)
     def shutdown_signal(signum, frame):
         print("\n[終了] シャットダウンシグナルを受信しました。終了します...")
-        dhu_manager.stop()
-        httpd.shutdown()
-        sys.exit(0)
+        raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, shutdown_signal)
     signal.signal(signal.SIGTERM, shutdown_signal)

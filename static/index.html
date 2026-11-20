@@ -431,85 +431,126 @@ unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip</pre>
                     <div class="guide-step">
                         <div class="step-number">3</div>
                         <div class="step-body">
-                            <h3>Linux起動時の自動起動（Autostart）設定</h3>
+                            <h3>サーバーをサービスとして自動起動する（systemd）</h3>
                             <p class="step-lead">
-                                PCや車載PCを起動した際に、自動で Linux Auto をバックグラウンド起動させる設定手順です。
+                                Linux Auto のサーバー（<code>app.py</code>）を systemd の <strong>ユーザーサービス</strong> として登録すると、
+                                PC にログインしたとき自動でバックグラウンド起動し、常駐するようになります。
+                                画面（このWebUI）を閉じてもサーバーと Android Auto 接続は止まりません。
+                            </p>
+
+                            <div class="callout callout-info">
+                                <span>🛈 現在のサーバー起動方式: <strong id="run-mode-label">確認中...</strong></span>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>1. サービスを登録する（初回のみ）</h4>
+                                <p>以下を実行するだけで、サービスの作成・自動起動の有効化・即時起動まで完了します：</p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">cd ~/LinuxAuto
+chmod +x install-service.sh
+./install-service.sh</pre>
+                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x install-service.sh &amp;&amp; ./install-service.sh">コピー</button>
+                                </div>
+                                <p class="help-text">
+                                    ※ <code>~/.config/systemd/user/linux-auto.service</code> が作成されます。<code>sudo</code> は不要です。<br>
+                                    ※ 以前の方式（<code>~/.config/autostart/linux-auto.desktop</code>）が残っている場合は、二重起動を防ぐため自動で無効化されます。<br>
+                                    ※ <code>./start.sh</code> で手動起動したサーバーが動いている場合は、先に Ctrl+C で終了してから登録してください。
+                                </p>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>2. 電源投入直後（ログイン前）から起動したい場合（任意）</h4>
+                                <p>
+                                    通常はログイン時に起動します。車載PCなどでログイン前からサーバーを立ち上げておきたい場合は <code>--boot</code> を付けて登録します
+                                    （<code>loginctl enable-linger</code> が設定されます）：
+                                </p>
+                                <div class="code-block-wrapper">
+                                    <pre class="code-block">./install-service.sh --boot</pre>
+                                    <button class="btn-copy" data-copy="./install-service.sh --boot">コピー</button>
+                                </div>
+                                <p class="help-text">
+                                    ※ Android Auto の画面（DHUのウィンドウ）はデスクトップに表示されるため、実際に接続するのはログイン後です。
+                                    自動ログインを有効にしておくと、電源を入れるだけで接続できる状態になります。
+                                </p>
+                            </div>
+
+                            <div class="guide-sub-section">
+                                <h4>3. サービスの操作コマンド</h4>
+                                <ul>
+                                    <li>状態確認：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">systemctl --user status linux-auto</pre>
+                                            <button class="btn-copy" data-copy="systemctl --user status linux-auto">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li>ログをリアルタイム表示：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">journalctl --user -u linux-auto -f</pre>
+                                            <button class="btn-copy" data-copy="journalctl --user -u linux-auto -f">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li>再起動（<code>git pull</code> 等でコードを更新した後は必ず実行）：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">systemctl --user restart linux-auto</pre>
+                                            <button class="btn-copy" data-copy="systemctl --user restart linux-auto">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li>停止 / 起動：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">systemctl --user stop linux-auto
+systemctl --user start linux-auto</pre>
+                                            <button class="btn-copy" data-copy="systemctl --user stop linux-auto">コピー</button>
+                                        </div>
+                                    </li>
+                                    <li>登録解除（自動起動をやめる）：
+                                        <div class="code-block-wrapper">
+                                            <pre class="code-block">./install-service.sh --uninstall</pre>
+                                            <button class="btn-copy" data-copy="./install-service.sh --uninstall">コピー</button>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 4 -->
+                    <div class="guide-step">
+                        <div class="step-number">4</div>
+                        <div class="step-body">
+                            <h3>起動アイコン（画面を開くだけ）を登録する</h3>
+                            <p class="step-lead">
+                                デスクトップ / アプリメニューの「Linux Auto」アイコンは、<strong>この画面を開くためだけのランチャー</strong>（<code>open-ui.sh</code>）です。
+                                サーバーはサービスとして常駐しているので、アイコンを押すたびにサーバーが起動し直すことはありません。
                             </p>
 
                             <div class="guide-sub-section">
-                                <h4>1. <code>start.sh</code> に実行権限を付与</h4>
-                                <p>まずは起動スクリプトに実行権限（chmod +x）を付与します：</p>
+                                <h4>1. アイコンを登録する</h4>
                                 <div class="code-block-wrapper">
                                     <pre class="code-block">cd ~/LinuxAuto
-chmod +x start.sh app.py</pre>
-                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x start.sh app.py">コピー</button>
-                                </div>
-                            </div>
-
-                            <div class="guide-sub-section">
-                                <h4>2. 自動起動用オプション: <code>--no-browser</code>（ブラウザ自動起動の抑止）</h4>
-                                <p>
-                                    通常 <code>./start.sh</code> を実行すると自動でブラウザが開きますが、PCの自動起動時にブラウザを勝手に開かせたくない場合は、
-                                    <strong><code>--no-browser</code>（または <code>-n</code>）</strong> 引数を渡します：
-                                </p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">./start.sh --no-browser</pre>
-                                    <button class="btn-copy" data-copy="./start.sh --no-browser">コピー</button>
+chmod +x install-desktop-shortcut.sh
+./install-desktop-shortcut.sh</pre>
+                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x install-desktop-shortcut.sh &amp;&amp; ./install-desktop-shortcut.sh">コピー</button>
                                 </div>
                                 <p class="help-text">
-                                    ※ サーバーはバックグラウンドでポート <code>8855</code> で待ち受け状態になります。操作したい時だけブラウザやPWAから <code>http://127.0.0.1:8855</code> を開けばOKです。
+                                    ※ 以前のバージョンでアイコンを登録済みの場合も、もう一度実行してください（アイコンの起動先が <code>open-ui.sh</code> に切り替わります）。
                                 </p>
                             </div>
 
                             <div class="guide-sub-section">
-                                <h4>3. Ubuntu / Kubuntu の自動起動に登録する方法</h4>
-                                
-                                <p><strong>【方法1: GUIから登録する】</strong></p>
-                                <ul>
-                                    <li><strong>Kubuntu (KDE Plasma)</strong>: 「システム設定」→「起動と終了」→「自動起動」を開き、「プログラムを追加」から <code>/path/to/LinuxAuto/start.sh</code> を指定し、引数に <code>--no-browser</code> を入力します。</li>
-                                    <li><strong>Ubuntu (GNOME)</strong>: Superキー（Windowsキー）を押し、「自動起動するアプリケーション」を検索して開きます。「追加」を押し、コマンドに <code>/home/ユーザー名/LinuxAuto/start.sh --no-browser</code> を指定します。</li>
-                                </ul>
-
-                                <p style="margin-top: 1rem;"><strong>【方法2: ターミナルから一発で登録する（Autostart .desktopファイル）】</strong></p>
-                                <p>以下のコマンドを実行すると、ログイン時の自動起動設定ファイルが自動作成されます：</p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">mkdir -p ~/.config/autostart
-cat &lt;&lt;EOF &gt; ~/.config/autostart/linux-auto.desktop
-[Desktop Entry]
-Type=Application
-Name=Linux Auto (Autostart)
-Exec=$(pwd)/start.sh --no-browser
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-Comment=Linux Auto Background Service
-EOF</pre>
-                                    <button class="btn-copy" data-copy="mkdir -p ~/.config/autostart
-cat &lt;&lt;EOF &gt; ~/.config/autostart/linux-auto.desktop
-[Desktop Entry]
-Type=Application
-Name=Linux Auto (Autostart)
-Exec=$(pwd)/start.sh --no-browser
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-Comment=Linux Auto Background Service
-EOF">コピー</button>
+                                <h4>2. アイコンを押したときの動作</h4>
+                                <ol>
+                                    <li>サーバーが応答していれば、そのままブラウザ（またはPWA）でこの画面を開きます。</li>
+                                    <li>サービスが停止していた場合は、<code>systemctl --user start linux-auto</code> で起動してから画面を開きます。</li>
+                                    <li>サービス未登録の場合のみ、サーバーを一時的にバックグラウンド起動します（ログ: <code>~/.cache/linux-auto/server.log</code>）。</li>
+                                </ol>
+                                <div class="callout callout-tip">
+                                    💡 <strong>ブラウザを閉じても接続は切れません。</strong> Android Auto を終了したいときは、この画面の「切断 / 停止」ボタンを押してください。
                                 </div>
                             </div>
 
                             <div class="guide-sub-section">
-                                <h4>4. 【暫定対応】ターミナル直結接続ツール (<code>./connect.sh</code>)</h4>
-                                <p>
-                                    デスクトップショートカット等から起動した際、DHU（Android Auto）が一瞬開いて切断されてしまう環境では、
-                                    ターミナル直結ツール <code>./connect.sh</code> をご利用ください。設定画面の内容を引き継ぎ、端末直結で確実に起動します：
-                                </p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">cd ~/LinuxAuto
-chmod +x connect.sh
-./connect.sh</pre>
-                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x connect.sh &amp;&amp; ./connect.sh">コピー</button>
-                                </div>
+                                <h4>参考: ターミナルで直接実行する場合</h4>
+                                <p>デバッグ時などは、サーバーをフォアグラウンドで起動（<code>./start.sh</code>）したり、DHUを直接実行（<code>./connect.sh</code>）したりできます。サービスが動いている間に <code>./start.sh</code> を実行すると、二重起動せず画面だけが開きます。</p>
                             </div>
                         </div>
                     </div>
