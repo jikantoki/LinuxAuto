@@ -5,7 +5,7 @@
 =============================================================================
 プロジェクト名: Linux Auto
 開発者: エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)
-GitHub: https://github.com/jikantoki
+GitHub: https://github.com/jikantoki/LinuxAuto
 
 【概要】
 Ubuntu/Kubuntu環境において、Google Desktop Head Unit (DHU) を使用した

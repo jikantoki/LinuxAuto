@@ -1305,7 +1305,6 @@ input:checked + .slider:before {
   font-size: 0.85rem;
 }
 
-.conn-card.locked .mode-card,
 .conn-card.locked .radio-pill {
   cursor: not-allowed;
   opacity: 0.7;
@@ -1326,8 +1325,7 @@ input:checked + .slider:before {
   line-height: 1.7;
 }
 
-.conn-panel code,
-.mode-card code {
+.conn-panel code {
   background: var(--bg-base);
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
@@ -1392,62 +1390,84 @@ input:checked + .slider:before {
   margin-top: 0.75rem;
 }
 
-/* 方法の選択カード */
-.mode-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+/* Wi-Fi 基本表示: 接続先スマホ */
+.wifi-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.9rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+.wifi-target-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.wifi-target-ip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--success);
+}
+.wifi-target-ip.missing {
+  font-family: inherit;
+  font-size: 1.05rem;
+  color: var(--warning);
+}
+.wifi-target-sub {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
 
-.mode-card {
-  display: flex;
-  gap: 0.75rem;
-  padding: 1rem;
-  background-color: var(--bg-base);
-  border: 2px solid var(--border-color);
+/* 詳細設定の開閉ボタン */
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  border: 1px dashed var(--border-light);
   border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.88rem;
   cursor: pointer;
   transition: var(--transition);
 }
-
-.mode-card:hover {
-  border-color: var(--border-light);
-}
-
-.mode-card:has(input:checked) {
+.advanced-toggle:hover {
+  color: var(--text-primary);
   border-color: var(--primary);
-  background-color: rgba(59, 130, 246, 0.08);
+}
+.advanced-toggle[aria-expanded='true'] {
+  color: var(--primary);
+  border-style: solid;
+  border-color: var(--primary);
+}
+.advanced-chevron {
+  font-size: 0.65rem;
+  transition: transform 0.2s ease;
+}
+.advanced-toggle[aria-expanded='true'] .advanced-chevron {
+  transform: rotate(180deg);
 }
 
-.mode-card input {
-  margin-top: 0.25rem;
-  accent-color: var(--primary);
+/* 詳細設定パネル */
+.wifi-advanced {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-color);
+  animation: fadeIn 0.25s ease;
 }
-
-.mode-card-body strong {
-  display: block;
-  margin: 0.4rem 0 0.3rem;
-  font-size: 0.98rem;
+.wifi-advanced[hidden] {
+  display: none;
 }
-.mode-card-body p {
-  font-size: 0.83rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.mode-card-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.mode-no {
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 0.15rem 0.5rem;
-  border-radius: var(--radius-full);
-  background: var(--primary);
-  color: #fff;
+.advanced-heading {
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
 }
 
 /* 方法ごとの詳細設定 */
@@ -1568,8 +1588,7 @@ input:checked + .slider:before {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
-  .conn-tabs,
-  .mode-cards {
+  .conn-tabs {
     grid-template-columns: 1fr;
   }
   .net-grid {

@@ -3,7 +3,7 @@
 # =============================================================================
 # Linux Auto - サービス登録スクリプト (install-service.sh)
 # 開発者: エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)
-# GitHub: https://github.com/jikantoki
+# GitHub: https://github.com/jikantoki/LinuxAuto
 #
 # Linux Auto のサーバー (app.py) を systemd の「ユーザーサービス」として登録し、
 # PC 起動 (ログイン) 時に自動でバックグラウンド起動させます。
@@ -80,7 +80,7 @@ echo "[設定] $UNIT_FILE を作成します..."
 cat <<EOF > "$UNIT_FILE"
 [Unit]
 Description=Linux Auto - Android Auto Headunit Support (WebUI server)
-Documentation=https://github.com/jikantoki
+Documentation=https://github.com/jikantoki/LinuxAuto
 
 [Service]
 Type=simple

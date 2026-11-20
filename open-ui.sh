@@ -3,7 +3,7 @@
 # =============================================================================
 # Linux Auto - 画面 (WebUI) を開くだけのランチャー (open-ui.sh)
 # 開発者: エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)
-# GitHub: https://github.com/jikantoki
+# GitHub: https://github.com/jikantoki/LinuxAuto
 #
 # 【役割】
 # デスクトップアイコン / アプリメニューから呼ばれるスクリプトです。

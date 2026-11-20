@@ -180,257 +180,265 @@
 
             <!-- Wi-Fi パネル -->
             <div class="conn-panel" id="panel-wifi">
-              <!-- ネットワーク状態 -->
-              <div class="net-info">
-                <div class="net-info-header">
-                  <h4>📡 ネットワーク状態</h4>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline"
-                    id="btn-net-refresh"
-                  >
-                    再取得
-                  </button>
-                </div>
-                <div class="net-grid">
-                  <div class="net-item">
-                    <span class="label">接続中のWi-Fi</span
-                    ><span class="value" id="net-ssid">--</span>
-                  </div>
-                  <div class="net-item">
-                    <span class="label">インターフェース</span
-                    ><span class="value" id="net-iface">--</span>
-                  </div>
-                  <div class="net-item">
-                    <span class="label">このPCのIP</span
-                    ><span class="value" id="net-local-ip">--</span>
-                  </div>
-                  <div class="net-item">
-                    <span class="label">スマホのIP (ゲートウェイ)</span
-                    ><span class="value highlight" id="net-gateway">--</span>
-                  </div>
-                </div>
-                <p class="help-text" id="net-hint">
-                  ネットワーク情報を取得しています...
-                </p>
+              <!-- ===== 基本表示 (最低限の項目のみ) ===== -->
+              <div class="wifi-target">
+                <span class="wifi-target-label">接続先スマホ</span>
+                <span class="wifi-target-ip" id="wifi-target-ip"
+                  >検出中...</span
+                >
+                <span class="wifi-target-sub" id="wifi-target-sub"></span>
               </div>
 
-              <!-- 接続先スマホの IP -->
-              <div class="form-group">
-                <label>接続先スマホの IP アドレス</label>
-                <div class="radio-pill-group">
-                  <label class="radio-pill">
-                    <input
-                      type="radio"
-                      name="phone-ip-mode"
-                      value="auto"
-                      checked
-                    />
-                    <span>自動（テザリング親機を検出）</span>
-                  </label>
-                  <label class="radio-pill">
-                    <input type="radio" name="phone-ip-mode" value="manual" />
-                    <span>手動入力</span>
-                  </label>
-                </div>
-                <input
-                  type="text"
-                  class="form-input"
-                  id="input-phone-ip"
-                  placeholder="例: 192.168.1.50"
-                  style="display: none; margin-top: 0.6rem"
-                />
-              </div>
-
-              <!-- 方法の選択 -->
               <div class="form-group">
                 <label>接続モード</label>
-                <div class="mode-cards">
-                  <label class="mode-card">
+                <div class="radio-pill-group">
+                  <label class="radio-pill">
                     <input type="radio" name="wifi-mode" value="adb" />
-                    <div class="mode-card-body">
-                      <div class="mode-card-head">
-                        <span class="mode-no">方法1</span>
-                        <span class="badge badge-info">開発・テスト向け</span>
-                      </div>
-                      <strong
-                        >ADB（Wi-Fiデバッグ）＋ポートフォワーディング</strong
-                      >
-                      <p>
-                        Wi-Fi 経由で <code>adb connect</code> し、<code
-                          >adb forward tcp:5277 tcp:5277</code
-                        >
-                        を設定してから DHU を起動します。
-                      </p>
-                    </div>
+                    <span>方法1: ADB 経由</span>
                   </label>
-                  <label class="mode-card">
+                  <label class="radio-pill">
                     <input
                       type="radio"
                       name="wifi-mode"
                       value="direct"
                       checked
                     />
-                    <div class="mode-card-body">
-                      <div class="mode-card-head">
-                        <span class="mode-no">方法2</span>
-                        <span class="badge badge-success"
-                          >おすすめ・追加機材なし</span
-                        >
-                      </div>
-                      <strong>ヘッドユニットサーバーへ直接接続</strong>
-                      <p>
-                        ADB を使わず、スマホのヘッドユニットサーバー（TCP
-                        5277）へ DHU
-                        から直接つなぎます（<code>--adb=スマホIP:5277</code>）。
-                      </p>
-                    </div>
+                    <span>方法2: 直接接続</span>
                   </label>
                 </div>
+                <p class="help-text" id="wifi-mode-desc"></p>
               </div>
 
-              <!-- 方法1 の詳細設定 -->
-              <div class="mode-detail" id="detail-adb">
-                <div class="form-group">
-                  <label for="input-adb-port">ADB 接続ポート</label>
-                  <input
-                    type="number"
-                    class="form-input number-input"
-                    id="input-adb-port"
-                    min="1"
-                    max="65535"
-                    value="5555"
+              <!-- ===== 詳細設定 (ボタンを押したときのみ表示) ===== -->
+              <button
+                type="button"
+                class="advanced-toggle"
+                id="btn-wifi-advanced"
+                aria-expanded="false"
+                aria-controls="wifi-advanced"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
                   />
-                  <p class="help-text">
-                    <code>adb tcpip</code> 方式は通常
-                    <code>5555</code
-                    >。ワイヤレスデバッグ方式はスマホに表示される「IP
-                    アドレスとポート」のポート番号を入力します。
-                  </p>
-                </div>
-                <div class="mode-actions">
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    id="btn-adb-tcpip"
-                  >
-                    ① USB経由で TCP/IP モードを有効化（adb tcpip）
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    id="btn-adb-connect"
-                  >
-                    ② Wi-Fi で接続テスト（adb connect）
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline"
-                    id="btn-adb-devices"
-                  >
-                    端末一覧を更新
-                  </button>
-                </div>
-                <p class="help-text">
-                  ① はスマホを一度だけ USB
-                  で接続して実行します（スマホを再起動すると元に戻るため、再起動後は再実行が必要です）。
-                  テザリングの親機になっているスマホではワイヤレスデバッグを ON
-                  にできない機種があるため、テザリング運用では ①
-                  の方式がおすすめです。
-                </p>
-                <details class="pair-box">
-                  <summary>
-                    Android 11
-                    以降の「ワイヤレスデバッグ（ペアリング）」を使う場合
-                  </summary>
-                  <p class="help-text">
-                    スマホの「開発者向けオプション」→「ワイヤレスデバッグ」→「ペア設定コードによるデバイスのペア設定」に表示されるポートとコードを入力します。
-                  </p>
-                  <div class="pair-fields">
-                    <input
-                      type="number"
-                      class="form-input number-input"
-                      id="input-pair-port"
-                      placeholder="ペア設定ポート"
-                      min="1"
-                      max="65535"
-                    />
-                    <input
-                      type="text"
-                      class="form-input"
-                      id="input-pair-code"
-                      placeholder="6桁のコード"
-                      maxlength="6"
-                      inputmode="numeric"
-                    />
+                </svg>
+                <span id="wifi-advanced-label">詳細設定を表示</span>
+                <span class="advanced-chevron">▼</span>
+              </button>
+
+              <div class="wifi-advanced" id="wifi-advanced" hidden>
+                <!-- ネットワーク状態 -->
+                <div class="net-info">
+                  <div class="net-info-header">
+                    <h4>📡 ネットワーク状態</h4>
                     <button
                       type="button"
-                      class="btn btn-secondary btn-sm"
-                      id="btn-adb-pair"
+                      class="btn btn-sm btn-outline"
+                      id="btn-net-refresh"
                     >
-                      ペアリング（adb pair）
+                      再取得
                     </button>
                   </div>
-                </details>
-                <div class="adb-device-list" id="adb-device-list"></div>
-              </div>
-
-              <!-- 方法2 の詳細設定 -->
-              <div class="mode-detail" id="detail-direct">
-                <div class="form-group">
-                  <label for="input-hu-port"
-                    >ヘッドユニットサーバーのポート</label
-                  >
-                  <input
-                    type="number"
-                    class="form-input number-input"
-                    id="input-hu-port"
-                    min="1"
-                    max="65535"
-                    value="5277"
-                  />
+                  <div class="net-grid">
+                    <div class="net-item">
+                      <span class="label">接続中のWi-Fi</span
+                      ><span class="value" id="net-ssid">--</span>
+                    </div>
+                    <div class="net-item">
+                      <span class="label">インターフェース</span
+                      ><span class="value" id="net-iface">--</span>
+                    </div>
+                    <div class="net-item">
+                      <span class="label">このPCのIP</span
+                      ><span class="value" id="net-local-ip">--</span>
+                    </div>
+                    <div class="net-item">
+                      <span class="label">スマホのIP (ゲートウェイ)</span
+                      ><span class="value highlight" id="net-gateway">--</span>
+                    </div>
+                  </div>
+                  <p class="help-text" id="net-hint">
+                    ネットワーク情報を取得しています...
+                  </p>
                 </div>
+
+                <!-- 接続先スマホの IP -->
                 <div class="form-group">
-                  <label>接続経路</label>
+                  <label>接続先スマホの IP アドレス</label>
                   <div class="radio-pill-group">
                     <label class="radio-pill">
                       <input
                         type="radio"
-                        name="direct-transport"
-                        value="adb_flag"
+                        name="phone-ip-mode"
+                        value="auto"
                         checked
                       />
-                      <span>DHU から直接（--adb=IP:ポート）</span>
+                      <span>自動（テザリング親機を検出）</span>
                     </label>
                     <label class="radio-pill">
-                      <input
-                        type="radio"
-                        name="direct-transport"
-                        value="relay"
-                      />
-                      <span>内蔵リレー経由（socat 相当）</span>
+                      <input type="radio" name="phone-ip-mode" value="manual" />
+                      <span>手動入力</span>
                     </label>
                   </div>
-                  <p class="help-text">
-                    通常は「DHU
-                    から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
-                    <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code>
-                    と同じ中継を Linux Auto 自身が行います（socat
-                    のインストールは不要）。
-                  </p>
+                  <input
+                    type="text"
+                    class="form-input"
+                    id="input-phone-ip"
+                    placeholder="例: 192.168.1.50"
+                    style="display: none; margin-top: 0.6rem"
+                  />
                 </div>
-                <div class="mode-actions">
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    id="btn-probe"
-                  >
-                    ヘッドユニットサーバーの疎通確認
-                  </button>
-                </div>
-              </div>
 
-              <div class="wifi-result" id="wifi-action-result"></div>
+                <!-- 方法1 の詳細設定 -->
+                <div class="mode-detail" id="detail-adb">
+                  <h4 class="advanced-heading">方法1（ADB）の設定</h4>
+                  <div class="form-group">
+                    <label for="input-adb-port">ADB 接続ポート</label>
+                    <input
+                      type="number"
+                      class="form-input number-input"
+                      id="input-adb-port"
+                      min="1"
+                      max="65535"
+                      value="5555"
+                    />
+                    <p class="help-text">
+                      <code>adb tcpip</code> 方式は通常
+                      <code>5555</code
+                      >。ワイヤレスデバッグ方式はスマホに表示される「IP
+                      アドレスとポート」のポート番号を入力します。
+                    </p>
+                  </div>
+                  <div class="mode-actions">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      id="btn-adb-tcpip"
+                    >
+                      ① USB経由で TCP/IP モードを有効化（adb tcpip）
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      id="btn-adb-connect"
+                    >
+                      ② Wi-Fi で接続テスト（adb connect）
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline"
+                      id="btn-adb-devices"
+                    >
+                      端末一覧を更新
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    ① はスマホを一度だけ USB
+                    で接続して実行します（スマホを再起動すると元に戻るため、再起動後は再実行が必要です）。
+                    テザリングの親機になっているスマホではワイヤレスデバッグを
+                    ON にできない機種があるため、テザリング運用では ①
+                    の方式がおすすめです。
+                  </p>
+                  <details class="pair-box">
+                    <summary>
+                      Android 11
+                      以降の「ワイヤレスデバッグ（ペアリング）」を使う場合
+                    </summary>
+                    <p class="help-text">
+                      スマホの「開発者向けオプション」→「ワイヤレスデバッグ」→「ペア設定コードによるデバイスのペア設定」に表示されるポートとコードを入力します。
+                    </p>
+                    <div class="pair-fields">
+                      <input
+                        type="number"
+                        class="form-input number-input"
+                        id="input-pair-port"
+                        placeholder="ペア設定ポート"
+                        min="1"
+                        max="65535"
+                      />
+                      <input
+                        type="text"
+                        class="form-input"
+                        id="input-pair-code"
+                        placeholder="6桁のコード"
+                        maxlength="6"
+                        inputmode="numeric"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm"
+                        id="btn-adb-pair"
+                      >
+                        ペアリング（adb pair）
+                      </button>
+                    </div>
+                  </details>
+                  <div class="adb-device-list" id="adb-device-list"></div>
+                </div>
+
+                <!-- 方法2 の詳細設定 -->
+                <div class="mode-detail" id="detail-direct">
+                  <h4 class="advanced-heading">方法2（直接接続）の設定</h4>
+                  <div class="form-group">
+                    <label for="input-hu-port"
+                      >ヘッドユニットサーバーのポート</label
+                    >
+                    <input
+                      type="number"
+                      class="form-input number-input"
+                      id="input-hu-port"
+                      min="1"
+                      max="65535"
+                      value="5277"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>接続経路</label>
+                    <div class="radio-pill-group">
+                      <label class="radio-pill">
+                        <input
+                          type="radio"
+                          name="direct-transport"
+                          value="adb_flag"
+                          checked
+                        />
+                        <span>DHU から直接（--adb=IP:ポート）</span>
+                      </label>
+                      <label class="radio-pill">
+                        <input
+                          type="radio"
+                          name="direct-transport"
+                          value="relay"
+                        />
+                        <span>内蔵リレー経由（socat 相当）</span>
+                      </label>
+                    </div>
+                    <p class="help-text">
+                      通常は「DHU
+                      から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
+                      <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code>
+                      と同じ中継を Linux Auto 自身が行います（socat
+                      のインストールは不要）。
+                    </p>
+                  </div>
+                  <div class="mode-actions">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      id="btn-probe"
+                    >
+                      ヘッドユニットサーバーの疎通確認
+                    </button>
+                  </div>
+                </div>
+
+                <div class="wifi-result" id="wifi-action-result"></div>
+              </div>
             </div>
           </div>
 
@@ -1001,6 +1009,17 @@ chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre
                   <strong>方法2（ヘッドユニットサーバーへ直接）</strong>
                   を選択します。
                 </p>
+                <div class="callout callout-info">
+                  <span
+                    >⚙ 以下の手順に出てくる「ネットワーク状態」「手動入力」「ADB
+                    接続ポート」「① / ②
+                    のボタン」「ペアリング」「疎通確認」「接続経路」は、メイン画面の
+                    <strong>Wi-Fi接続 →「詳細設定を表示」</strong>
+                    を押すと表示されます。普段は接続先スマホの IP
+                    と接続モードだけを確認して「接続開始」を押せば OK
+                    です。</span
+                  >
+                </div>
 
                 <div class="guide-sub-section">
                   <h4>
@@ -1018,10 +1037,10 @@ chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre
                       をタップします（通知が表示されれば起動中です）。
                     </li>
                     <li>
-                      メイン画面の「ネットワーク状態」で、<strong
-                        >スマホのIP（ゲートウェイ）</strong
+                      メイン画面の「接続先スマホ」に<strong
+                        >スマホの IP アドレス</strong
                       >
-                      が表示されていることを確認します。
+                      が表示されていることを確認します（「見つかりません」の場合はテザリングへの接続を確認してください）。
                     </li>
                   </ol>
                   <div class="callout callout-tip">
@@ -1496,11 +1515,11 @@ chmod +x install-desktop-shortcut.sh
                 <span class="info-label">GitHub</span>
                 <span class="info-value">
                   <a
-                    href="https://github.com/jikantoki"
+                    href="https://github.com/jikantoki/LinuxAuto"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    https://github.com/jikantoki
+                    https://github.com/jikantoki/LinuxAuto
                     <svg
                       viewBox="0 0 24 24"
                       width="14"

@@ -2,7 +2,7 @@
  * =============================================================================
  * Linux Auto - Frontend Application Logic
  * 開発者: エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)
- * GitHub: https://github.com/jikantoki
+ * GitHub: https://github.com/jikantoki/LinuxAuto
  *
  * 【概要】
  * バックエンド（Python HTTP Server）との非同期通信(Fetch API)、
@@ -330,6 +330,12 @@ document.addEventListener('DOMContentLoaded', () => {
     inputHuPort: document.getElementById('input-hu-port'),
     inputPairPort: document.getElementById('input-pair-port'),
     inputPairCode: document.getElementById('input-pair-code'),
+    targetIp: document.getElementById('wifi-target-ip'),
+    targetSub: document.getElementById('wifi-target-sub'),
+    modeDesc: document.getElementById('wifi-mode-desc'),
+    advButton: document.getElementById('btn-wifi-advanced'),
+    advPanel: document.getElementById('wifi-advanced'),
+    advLabel: document.getElementById('wifi-advanced-label'),
     detailAdb: document.getElementById('detail-adb'),
     detailDirect: document.getElementById('detail-direct'),
     result: document.getElementById('wifi-action-result'),
@@ -418,6 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     conn.inputPhoneIp.style.display = f.phone_ip_auto ? 'none' : 'block'
     conn.detailAdb.classList.toggle('active', f.wifi_mode === 'adb')
     conn.detailDirect.classList.toggle('active', f.wifi_mode === 'direct')
+    renderWifiBasic(f)
 
     const s = connectionSummary()
     const sumConn = document.getElementById('summary-connection')
@@ -428,6 +435,59 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.mainStatusDesc.textContent = idleDescription()
     }
   }
+
+  // Wi-Fi 基本表示 (接続先スマホ + モードの一言説明) の更新
+  function renderWifiBasic(f) {
+    const net = conn.lastNetwork
+    if (!f.phone_ip_auto) {
+      conn.targetIp.textContent = f.phone_ip || '未入力'
+      conn.targetIp.classList.toggle('missing', !f.phone_ip)
+      conn.targetSub.textContent = f.phone_ip
+        ? '手動入力（変更は詳細設定から）'
+        : '⚠️ 詳細設定でスマホの IP アドレスを入力してください'
+    } else if (!net) {
+      conn.targetIp.textContent = '検出中...'
+      conn.targetIp.classList.remove('missing')
+      conn.targetSub.textContent = ''
+    } else if (net.resolved_phone_ip) {
+      conn.targetIp.textContent = net.resolved_phone_ip
+      conn.targetIp.classList.remove('missing')
+      conn.targetSub.textContent = net.ssid
+        ? `テザリング親機を自動検出（Wi-Fi: ${net.ssid}）`
+        : 'テザリング親機を自動検出'
+    } else {
+      conn.targetIp.textContent = '見つかりません'
+      conn.targetIp.classList.add('missing')
+      conn.targetSub.textContent =
+        '⚠️ Linux 端末をスマホのテザリング (Wi-Fi) に接続してください'
+    }
+
+    conn.modeDesc.textContent =
+      f.wifi_mode === 'adb'
+        ? 'ADB 経由でスマホに接続します。スマホを再起動した後は、詳細設定の「① TCP/IP モードを有効化」を USB 接続して再実行してください。'
+        : 'スマホのヘッドユニットサーバーへ直接接続します（ADB 不要）。'
+  }
+
+  // 詳細設定の開閉 (状態はこのブラウザに記憶)
+  const ADVANCED_KEY = 'linuxAuto.wifiAdvancedOpen'
+  function setAdvancedOpen(open) {
+    conn.advPanel.hidden = !open
+    conn.advButton.setAttribute('aria-expanded', String(open))
+    conn.advLabel.textContent = open ? '詳細設定を閉じる' : '詳細設定を表示'
+    try {
+      localStorage.setItem(ADVANCED_KEY, open ? '1' : '0')
+    } catch (e) {
+      // ストレージが使えない環境では記憶しない
+    }
+    if (open && conn.type === 'wifi') {
+      refreshNetwork()
+      if (getConnectionForm().wifi_mode === 'adb') refreshDevices()
+    }
+  }
+
+  conn.advButton.addEventListener('click', () =>
+    setAdvancedOpen(conn.advPanel.hidden),
+  )
 
   function idleDescription() {
     if (conn.type === 'usb')
@@ -661,7 +721,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyConnectionConfig(app)
     if (conn.type === 'wifi') {
       refreshNetwork()
-      refreshDevices()
+      if (!conn.advPanel.hidden) refreshDevices()
     }
 
     // アプリ設定 (DHUパス)
@@ -933,6 +993,15 @@ framerate = ${data.framerate}`
   // =========================================================================
   // 10. 初期化と定期ポーリング開始
   // =========================================================================
+  // 詳細設定の開閉状態を復元 (初回は閉じた状態)
+  let advancedOpen = false
+  try {
+    advancedOpen = localStorage.getItem(ADVANCED_KEY) === '1'
+  } catch (e) {
+    advancedOpen = false
+  }
+  setAdvancedOpen(advancedOpen)
+
   loadConfig()
   updateStatus()
 

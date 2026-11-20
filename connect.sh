@@ -3,7 +3,7 @@
 # =============================================================================
 # Linux Auto - コマンドライン直接接続ツール (connect.sh)
 # 開発者: エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)
-# GitHub: https://github.com/jikantoki
+# GitHub: https://github.com/jikantoki/LinuxAuto
 #
 # 【概要】
 # GUI経由ではなく、ターミナルから直接 desktop-head-unit --usb を実行する暫定CLIツールです。

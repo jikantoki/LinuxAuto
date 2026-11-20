@@ -7,7 +7,7 @@
 #    開く運用をおすすめします。このスクリプトはデバッグや一時利用向けです。
 #    サービスが既に動いている場合は二重起動せず、画面だけを開いて終了します。
 # 開発者: エノキ電気 ENOKI ELECTRONICS (https://enoki.xyz)
-# GitHub: https://github.com/jikantoki
+# GitHub: https://github.com/jikantoki/LinuxAuto
 # =============================================================================
 
 set -e
