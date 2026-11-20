@@ -1,883 +1,1552 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Linux Auto - Android Auto Headunit Support</title>
     <!-- PWA Settings -->
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#18202c">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Linux Auto">
-    <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="icon" type="image/svg+xml" href="icon.svg">
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#18202c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Linux Auto" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
     <div class="app-layout">
-        <!-- サイドバーナビゲーション -->
-        <aside class="sidebar">
-            <div class="brand">
-                <div class="brand-icon">
-                    <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
-                        <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z"/>
-                        <circle cx="7.5" cy="14.5" r="1.5"/>
-                        <circle cx="16.5" cy="14.5" r="1.5"/>
-                    </svg>
-                </div>
-                <div class="brand-text">
-                    <span class="brand-title">Linux Auto</span>
-                    <span class="brand-subtitle">Headunit Support</span>
-                </div>
+      <!-- サイドバーナビゲーション -->
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+              <path
+                d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z"
+              />
+              <circle cx="7.5" cy="14.5" r="1.5" />
+              <circle cx="16.5" cy="14.5" r="1.5" />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">Linux Auto</span>
+            <span class="brand-subtitle">Headunit Support</span>
+          </div>
+        </div>
+
+        <nav class="nav-menu">
+          <button class="nav-item active" data-tab="tab-main">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"
+              />
+            </svg>
+            <span>メイン接続</span>
+          </button>
+          <button class="nav-item" data-tab="tab-settings">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path
+                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+              />
+            </svg>
+            <span>設定</span>
+          </button>
+          <button class="nav-item" data-tab="tab-guide">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 .88-.36 1.68-.93 2.25z"
+              />
+            </svg>
+            <span>導入ガイド</span>
+          </button>
+          <button class="nav-item" data-tab="tab-about">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
+              />
+            </svg>
+            <span>About</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <!-- PWA インストールバナー -->
+          <div class="pwa-install-banner" id="pwa-banner">
+            <div class="pwa-text">
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="currentColor"
+              >
+                <path
+                  d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"
+                />
+              </svg>
+              <span>アプリ化</span>
+            </div>
+            <button class="btn btn-sm btn-primary" id="btn-install-pwa">
+              インストール
+            </button>
+          </div>
+
+          <div class="connection-badge" id="sidebar-badge">
+            <span class="status-dot"></span>
+            <span class="status-label">停止中</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- メインコンテンツ領域 -->
+      <main class="content-area">
+        <!-- ========================================================= -->
+        <!-- 1. メインページ (接続操作・状態監視) -->
+        <!-- ========================================================= -->
+        <section id="tab-main" class="tab-pane active">
+          <header class="pane-header">
+            <h2>Android Auto 接続</h2>
+            <p class="subtitle">
+              接続方式（USB /
+              Wi-Fi）を選んで、スマートフォンと車載エミュレーター(DHU)をワンクリックで接続します
+            </p>
+          </header>
+
+          <!-- ===================================================== -->
+          <!-- 接続方式の選択 (USB接続 / Wi-Fi接続) -->
+          <!-- ===================================================== -->
+          <div class="card conn-card" id="conn-card">
+            <div class="conn-tabs" role="tablist">
+              <button
+                type="button"
+                class="conn-tab active"
+                data-conn="usb"
+                role="tab"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M15 7v4h1v2h-3V5h2l-3-4-3 4h2v8H8v-2.07c.7-.37 1.2-1.08 1.2-1.93 0-1.21-.99-2.2-2.2-2.2-1.21 0-2.2.99-2.2 2.2 0 .85.5 1.56 1.2 1.93V13c0 1.11.89 2 2 2h3v3.05c-.71.37-1.2 1.1-1.2 1.95 0 1.22.99 2.2 2.2 2.2 1.21 0 2.2-.98 2.2-2.2 0-.85-.49-1.58-1.2-1.95V15h3c1.11 0 2-.89 2-2v-2h1V7h-4z"
+                  />
+                </svg>
+                <span class="conn-tab-text">
+                  <span class="conn-tab-title">USB接続</span>
+                  <span class="conn-tab-sub">ケーブルで有線接続</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                class="conn-tab"
+                data-conn="wifi"
+                role="tab"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="26"
+                  height="26"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"
+                  />
+                </svg>
+                <span class="conn-tab-text">
+                  <span class="conn-tab-title">Wi-Fi接続</span>
+                  <span class="conn-tab-sub">スマホのテザリング / 同一LAN</span>
+                </span>
+              </button>
             </div>
 
-            <nav class="nav-menu">
-                <button class="nav-item active" data-tab="tab-main">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-                    </svg>
-                    <span>メイン接続</span>
-                </button>
-                <button class="nav-item" data-tab="tab-settings">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                        <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                    </svg>
-                    <span>設定</span>
-                </button>
-                <button class="nav-item" data-tab="tab-guide">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 .88-.36 1.68-.93 2.25z"/>
-                    </svg>
-                    <span>導入ガイド</span>
-                </button>
-                <button class="nav-item" data-tab="tab-about">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-                    </svg>
-                    <span>About</span>
-                </button>
-            </nav>
+            <p class="conn-lock-note" id="conn-lock-note">
+              🔒 接続中は接続方式を変更できません。変更する場合は一度「切断 /
+              停止」してください。
+            </p>
 
-            <div class="sidebar-footer">
-                <!-- PWA インストールバナー -->
-                <div class="pwa-install-banner" id="pwa-banner">
-                    <div class="pwa-text">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
-                        <span>アプリ化</span>
-                    </div>
-                    <button class="btn btn-sm btn-primary" id="btn-install-pwa">インストール</button>
-                </div>
-
-                <div class="connection-badge" id="sidebar-badge">
-                    <span class="status-dot"></span>
-                    <span class="status-label">停止中</span>
-                </div>
+            <!-- USB パネル -->
+            <div class="conn-panel active" id="panel-usb">
+              <p class="conn-panel-lead">
+                USB ケーブルで接続し、Android Open Accessory (AOA)
+                モードで通信します（<code>desktop-head-unit --usb</code>）。
+                充電専用ではなく<strong>データ通信対応のケーブル</strong>を使用してください。
+              </p>
             </div>
-        </aside>
 
-        <!-- メインコンテンツ領域 -->
-        <main class="content-area">
-            
-            <!-- ========================================================= -->
-            <!-- 1. メインページ (接続操作・状態監視) -->
-            <!-- ========================================================= -->
-            <section id="tab-main" class="tab-pane active">
-                <header class="pane-header">
-                    <h2>Android Auto 接続</h2>
-                    <p class="subtitle">接続方式（USB / Wi-Fi）を選んで、スマートフォンと車載エミュレーター(DHU)をワンクリックで接続します</p>
-                </header>
+            <!-- Wi-Fi パネル -->
+            <div class="conn-panel" id="panel-wifi">
+              <!-- ネットワーク状態 -->
+              <div class="net-info">
+                <div class="net-info-header">
+                  <h4>📡 ネットワーク状態</h4>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline"
+                    id="btn-net-refresh"
+                  >
+                    再取得
+                  </button>
+                </div>
+                <div class="net-grid">
+                  <div class="net-item">
+                    <span class="label">接続中のWi-Fi</span
+                    ><span class="value" id="net-ssid">--</span>
+                  </div>
+                  <div class="net-item">
+                    <span class="label">インターフェース</span
+                    ><span class="value" id="net-iface">--</span>
+                  </div>
+                  <div class="net-item">
+                    <span class="label">このPCのIP</span
+                    ><span class="value" id="net-local-ip">--</span>
+                  </div>
+                  <div class="net-item">
+                    <span class="label">スマホのIP (ゲートウェイ)</span
+                    ><span class="value highlight" id="net-gateway">--</span>
+                  </div>
+                </div>
+                <p class="help-text" id="net-hint">
+                  ネットワーク情報を取得しています...
+                </p>
+              </div>
 
-                <!-- ===================================================== -->
-                <!-- 接続方式の選択 (USB接続 / Wi-Fi接続) -->
-                <!-- ===================================================== -->
-                <div class="card conn-card" id="conn-card">
-                    <div class="conn-tabs" role="tablist">
-                        <button type="button" class="conn-tab active" data-conn="usb" role="tab">
-                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M15 7v4h1v2h-3V5h2l-3-4-3 4h2v8H8v-2.07c.7-.37 1.2-1.08 1.2-1.93 0-1.21-.99-2.2-2.2-2.2-1.21 0-2.2.99-2.2 2.2 0 .85.5 1.56 1.2 1.93V13c0 1.11.89 2 2 2h3v3.05c-.71.37-1.2 1.1-1.2 1.95 0 1.22.99 2.2 2.2 2.2 1.21 0 2.2-.98 2.2-2.2 0-.85-.49-1.58-1.2-1.95V15h3c1.11 0 2-.89 2-2v-2h1V7h-4z"/></svg>
-                            <span class="conn-tab-text">
-                                <span class="conn-tab-title">USB接続</span>
-                                <span class="conn-tab-sub">ケーブルで有線接続</span>
-                            </span>
-                        </button>
-                        <button type="button" class="conn-tab" data-conn="wifi" role="tab">
-                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
-                            <span class="conn-tab-text">
-                                <span class="conn-tab-title">Wi-Fi接続</span>
-                                <span class="conn-tab-sub">スマホのテザリング / 同一LAN</span>
-                            </span>
-                        </button>
+              <!-- 接続先スマホの IP -->
+              <div class="form-group">
+                <label>接続先スマホの IP アドレス</label>
+                <div class="radio-pill-group">
+                  <label class="radio-pill">
+                    <input
+                      type="radio"
+                      name="phone-ip-mode"
+                      value="auto"
+                      checked
+                    />
+                    <span>自動（テザリング親機を検出）</span>
+                  </label>
+                  <label class="radio-pill">
+                    <input type="radio" name="phone-ip-mode" value="manual" />
+                    <span>手動入力</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  class="form-input"
+                  id="input-phone-ip"
+                  placeholder="例: 192.168.1.50"
+                  style="display: none; margin-top: 0.6rem"
+                />
+              </div>
+
+              <!-- 方法の選択 -->
+              <div class="form-group">
+                <label>接続モード</label>
+                <div class="mode-cards">
+                  <label class="mode-card">
+                    <input type="radio" name="wifi-mode" value="adb" />
+                    <div class="mode-card-body">
+                      <div class="mode-card-head">
+                        <span class="mode-no">方法1</span>
+                        <span class="badge badge-info">開発・テスト向け</span>
+                      </div>
+                      <strong
+                        >ADB（Wi-Fiデバッグ）＋ポートフォワーディング</strong
+                      >
+                      <p>
+                        Wi-Fi 経由で <code>adb connect</code> し、<code
+                          >adb forward tcp:5277 tcp:5277</code
+                        >
+                        を設定してから DHU を起動します。
+                      </p>
                     </div>
-
-                    <p class="conn-lock-note" id="conn-lock-note">🔒 接続中は接続方式を変更できません。変更する場合は一度「切断 / 停止」してください。</p>
-
-                    <!-- USB パネル -->
-                    <div class="conn-panel active" id="panel-usb">
-                        <p class="conn-panel-lead">
-                            USB ケーブルで接続し、Android Open Accessory (AOA) モードで通信します（<code>desktop-head-unit --usb</code>）。
-                            充電専用ではなく<strong>データ通信対応のケーブル</strong>を使用してください。
-                        </p>
+                  </label>
+                  <label class="mode-card">
+                    <input
+                      type="radio"
+                      name="wifi-mode"
+                      value="direct"
+                      checked
+                    />
+                    <div class="mode-card-body">
+                      <div class="mode-card-head">
+                        <span class="mode-no">方法2</span>
+                        <span class="badge badge-success"
+                          >おすすめ・追加機材なし</span
+                        >
+                      </div>
+                      <strong>ヘッドユニットサーバーへ直接接続</strong>
+                      <p>
+                        ADB を使わず、スマホのヘッドユニットサーバー（TCP
+                        5277）へ DHU
+                        から直接つなぎます（<code>--adb=スマホIP:5277</code>）。
+                      </p>
                     </div>
+                  </label>
+                </div>
+              </div>
 
-                    <!-- Wi-Fi パネル -->
-                    <div class="conn-panel" id="panel-wifi">
+              <!-- 方法1 の詳細設定 -->
+              <div class="mode-detail" id="detail-adb">
+                <div class="form-group">
+                  <label for="input-adb-port">ADB 接続ポート</label>
+                  <input
+                    type="number"
+                    class="form-input number-input"
+                    id="input-adb-port"
+                    min="1"
+                    max="65535"
+                    value="5555"
+                  />
+                  <p class="help-text">
+                    <code>adb tcpip</code> 方式は通常
+                    <code>5555</code
+                    >。ワイヤレスデバッグ方式はスマホに表示される「IP
+                    アドレスとポート」のポート番号を入力します。
+                  </p>
+                </div>
+                <div class="mode-actions">
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    id="btn-adb-tcpip"
+                  >
+                    ① USB経由で TCP/IP モードを有効化（adb tcpip）
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    id="btn-adb-connect"
+                  >
+                    ② Wi-Fi で接続テスト（adb connect）
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline"
+                    id="btn-adb-devices"
+                  >
+                    端末一覧を更新
+                  </button>
+                </div>
+                <p class="help-text">
+                  ① はスマホを一度だけ USB
+                  で接続して実行します（スマホを再起動すると元に戻るため、再起動後は再実行が必要です）。
+                  テザリングの親機になっているスマホではワイヤレスデバッグを ON
+                  にできない機種があるため、テザリング運用では ①
+                  の方式がおすすめです。
+                </p>
+                <details class="pair-box">
+                  <summary>
+                    Android 11
+                    以降の「ワイヤレスデバッグ（ペアリング）」を使う場合
+                  </summary>
+                  <p class="help-text">
+                    スマホの「開発者向けオプション」→「ワイヤレスデバッグ」→「ペア設定コードによるデバイスのペア設定」に表示されるポートとコードを入力します。
+                  </p>
+                  <div class="pair-fields">
+                    <input
+                      type="number"
+                      class="form-input number-input"
+                      id="input-pair-port"
+                      placeholder="ペア設定ポート"
+                      min="1"
+                      max="65535"
+                    />
+                    <input
+                      type="text"
+                      class="form-input"
+                      id="input-pair-code"
+                      placeholder="6桁のコード"
+                      maxlength="6"
+                      inputmode="numeric"
+                    />
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      id="btn-adb-pair"
+                    >
+                      ペアリング（adb pair）
+                    </button>
+                  </div>
+                </details>
+                <div class="adb-device-list" id="adb-device-list"></div>
+              </div>
 
-                        <!-- ネットワーク状態 -->
-                        <div class="net-info">
-                            <div class="net-info-header">
-                                <h4>📡 ネットワーク状態</h4>
-                                <button type="button" class="btn btn-sm btn-outline" id="btn-net-refresh">再取得</button>
-                            </div>
-                            <div class="net-grid">
-                                <div class="net-item"><span class="label">接続中のWi-Fi</span><span class="value" id="net-ssid">--</span></div>
-                                <div class="net-item"><span class="label">インターフェース</span><span class="value" id="net-iface">--</span></div>
-                                <div class="net-item"><span class="label">このPCのIP</span><span class="value" id="net-local-ip">--</span></div>
-                                <div class="net-item"><span class="label">スマホのIP (ゲートウェイ)</span><span class="value highlight" id="net-gateway">--</span></div>
-                            </div>
-                            <p class="help-text" id="net-hint">ネットワーク情報を取得しています...</p>
-                        </div>
+              <!-- 方法2 の詳細設定 -->
+              <div class="mode-detail" id="detail-direct">
+                <div class="form-group">
+                  <label for="input-hu-port"
+                    >ヘッドユニットサーバーのポート</label
+                  >
+                  <input
+                    type="number"
+                    class="form-input number-input"
+                    id="input-hu-port"
+                    min="1"
+                    max="65535"
+                    value="5277"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>接続経路</label>
+                  <div class="radio-pill-group">
+                    <label class="radio-pill">
+                      <input
+                        type="radio"
+                        name="direct-transport"
+                        value="adb_flag"
+                        checked
+                      />
+                      <span>DHU から直接（--adb=IP:ポート）</span>
+                    </label>
+                    <label class="radio-pill">
+                      <input
+                        type="radio"
+                        name="direct-transport"
+                        value="relay"
+                      />
+                      <span>内蔵リレー経由（socat 相当）</span>
+                    </label>
+                  </div>
+                  <p class="help-text">
+                    通常は「DHU
+                    から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
+                    <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code>
+                    と同じ中継を Linux Auto 自身が行います（socat
+                    のインストールは不要）。
+                  </p>
+                </div>
+                <div class="mode-actions">
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    id="btn-probe"
+                  >
+                    ヘッドユニットサーバーの疎通確認
+                  </button>
+                </div>
+              </div>
 
-                        <!-- 接続先スマホの IP -->
-                        <div class="form-group">
-                            <label>接続先スマホの IP アドレス</label>
-                            <div class="radio-pill-group">
-                                <label class="radio-pill">
-                                    <input type="radio" name="phone-ip-mode" value="auto" checked>
-                                    <span>自動（テザリング親機を検出）</span>
-                                </label>
-                                <label class="radio-pill">
-                                    <input type="radio" name="phone-ip-mode" value="manual">
-                                    <span>手動入力</span>
-                                </label>
-                            </div>
-                            <input type="text" class="form-input" id="input-phone-ip" placeholder="例: 192.168.1.50" style="display: none; margin-top: 0.6rem;">
-                        </div>
+              <div class="wifi-result" id="wifi-action-result"></div>
+            </div>
+          </div>
 
-                        <!-- 方法の選択 -->
-                        <div class="form-group">
-                            <label>接続モード</label>
-                            <div class="mode-cards">
-                                <label class="mode-card">
-                                    <input type="radio" name="wifi-mode" value="adb">
-                                    <div class="mode-card-body">
-                                        <div class="mode-card-head">
-                                            <span class="mode-no">方法1</span>
-                                            <span class="badge badge-info">開発・テスト向け</span>
-                                        </div>
-                                        <strong>ADB（Wi-Fiデバッグ）＋ポートフォワーディング</strong>
-                                        <p>Wi-Fi 経由で <code>adb connect</code> し、<code>adb forward tcp:5277 tcp:5277</code> を設定してから DHU を起動します。</p>
-                                    </div>
-                                </label>
-                                <label class="mode-card">
-                                    <input type="radio" name="wifi-mode" value="direct" checked>
-                                    <div class="mode-card-body">
-                                        <div class="mode-card-head">
-                                            <span class="mode-no">方法2</span>
-                                            <span class="badge badge-success">おすすめ・追加機材なし</span>
-                                        </div>
-                                        <strong>ヘッドユニットサーバーへ直接接続</strong>
-                                        <p>ADB を使わず、スマホのヘッドユニットサーバー（TCP 5277）へ DHU から直接つなぎます（<code>--adb=スマホIP:5277</code>）。</p>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
+          <div class="dashboard-grid">
+            <!-- コントロールカード -->
+            <div class="card control-card">
+              <div class="status-display-large">
+                <div class="status-ring" id="status-ring">
+                  <div class="status-icon" id="status-icon">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="48"
+                      height="48"
+                      fill="currentColor"
+                    >
+                      <path
+                        d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div class="status-text-group">
+                  <h3 id="main-status-title">待機中 (停止)</h3>
+                  <p id="main-status-desc">
+                    接続方式を選び、「接続開始」を押してください。
+                  </p>
+                </div>
+              </div>
 
-                        <!-- 方法1 の詳細設定 -->
-                        <div class="mode-detail" id="detail-adb">
-                            <div class="form-group">
-                                <label for="input-adb-port">ADB 接続ポート</label>
-                                <input type="number" class="form-input number-input" id="input-adb-port" min="1" max="65535" value="5555">
-                                <p class="help-text">
-                                    <code>adb tcpip</code> 方式は通常 <code>5555</code>。ワイヤレスデバッグ方式はスマホに表示される「IP アドレスとポート」のポート番号を入力します。
-                                </p>
-                            </div>
-                            <div class="mode-actions">
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-adb-tcpip">① USB経由で TCP/IP モードを有効化（adb tcpip）</button>
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-adb-connect">② Wi-Fi で接続テスト（adb connect）</button>
-                                <button type="button" class="btn btn-sm btn-outline" id="btn-adb-devices">端末一覧を更新</button>
-                            </div>
-                            <p class="help-text">
-                                ① はスマホを一度だけ USB で接続して実行します（スマホを再起動すると元に戻るため、再起動後は再実行が必要です）。
-                                テザリングの親機になっているスマホではワイヤレスデバッグを ON にできない機種があるため、テザリング運用では ① の方式がおすすめです。
-                            </p>
-                            <details class="pair-box">
-                                <summary>Android 11 以降の「ワイヤレスデバッグ（ペアリング）」を使う場合</summary>
-                                <p class="help-text">スマホの「開発者向けオプション」→「ワイヤレスデバッグ」→「ペア設定コードによるデバイスのペア設定」に表示されるポートとコードを入力します。</p>
-                                <div class="pair-fields">
-                                    <input type="number" class="form-input number-input" id="input-pair-port" placeholder="ペア設定ポート" min="1" max="65535">
-                                    <input type="text" class="form-input" id="input-pair-code" placeholder="6桁のコード" maxlength="6" inputmode="numeric">
-                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-adb-pair">ペアリング（adb pair）</button>
-                                </div>
-                            </details>
-                            <div class="adb-device-list" id="adb-device-list"></div>
-                        </div>
+              <!-- 10秒自動復帰カウントダウン通知（切断時に表示） -->
+              <div
+                class="reconnect-banner"
+                id="reconnect-banner"
+                style="display: none"
+              >
+                <div class="reconnect-header">
+                  <span class="reconnect-title"
+                    >⚠️ 切断を検知しました (自動復帰待機中)</span
+                  >
+                  <span class="reconnect-timer" id="countdown-timer">10秒</span>
+                </div>
+                <div class="progress-bar-bg">
+                  <div class="progress-bar-fill" id="countdown-progress"></div>
+                </div>
+                <p class="reconnect-sub" id="reconnect-sub">
+                  USBケーブルを挿し直してください。自動的にDHUを再起動します。
+                </p>
+              </div>
 
-                        <!-- 方法2 の詳細設定 -->
-                        <div class="mode-detail" id="detail-direct">
-                            <div class="form-group">
-                                <label for="input-hu-port">ヘッドユニットサーバーのポート</label>
-                                <input type="number" class="form-input number-input" id="input-hu-port" min="1" max="65535" value="5277">
-                            </div>
-                            <div class="form-group">
-                                <label>接続経路</label>
-                                <div class="radio-pill-group">
-                                    <label class="radio-pill">
-                                        <input type="radio" name="direct-transport" value="adb_flag" checked>
-                                        <span>DHU から直接（--adb=IP:ポート）</span>
-                                    </label>
-                                    <label class="radio-pill">
-                                        <input type="radio" name="direct-transport" value="relay">
-                                        <span>内蔵リレー経由（socat 相当）</span>
-                                    </label>
-                                </div>
-                                <p class="help-text">
-                                    通常は「DHU から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
-                                    <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code> と同じ中継を Linux Auto 自身が行います（socat のインストールは不要）。
-                                </p>
-                            </div>
-                            <div class="mode-actions">
-                                <button type="button" class="btn btn-secondary btn-sm" id="btn-probe">ヘッドユニットサーバーの疎通確認</button>
-                            </div>
-                        </div>
+              <!-- 接続ボタン群 -->
+              <div class="action-buttons">
+                <button id="btn-start" class="btn btn-primary btn-large">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="24"
+                    height="24"
+                    fill="currentColor"
+                  >
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  <span>接続開始 (DHU起動)</span>
+                </button>
+                <button id="btn-stop" class="btn btn-danger btn-large" disabled>
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="24"
+                    height="24"
+                    fill="currentColor"
+                  >
+                    <path d="M6 6h12v12H6z" />
+                  </svg>
+                  <span>切断 / 停止</span>
+                </button>
+              </div>
+            </div>
 
-                        <div class="wifi-result" id="wifi-action-result"></div>
-                    </div>
+            <!-- クイックサマリーカード -->
+            <div class="card summary-card">
+              <h3>現在の設定サマリー</h3>
+              <div class="summary-list">
+                <div class="summary-item">
+                  <span class="label">接続方式</span>
+                  <span class="value" id="summary-connection">--</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">接続先</span>
+                  <span class="value" id="summary-target">--</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">解像度</span>
+                  <span class="value" id="summary-resolution">--</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">最大フレームレート</span>
+                  <span class="value" id="summary-framerate">--</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">画面密度 (DPI)</span>
+                  <span class="value" id="summary-dpi">--</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">タッチパネル</span>
+                  <span class="value" id="summary-touch">--</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">DHUパス状態</span>
+                  <span class="value status-badge" id="summary-dhu-status"
+                    >確認中</span
+                  >
+                </div>
+              </div>
+              <div class="card-footer-action">
+                <button class="btn btn-secondary btn-sm" id="btn-goto-settings">
+                  設定を変更する
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- リアルタイムログカード -->
+          <div class="card log-card">
+            <div class="log-card-header">
+              <h3>実行ログ</h3>
+              <div class="log-actions">
+                <label class="checkbox-inline">
+                  <input type="checkbox" id="chk-autoscroll" checked />
+                  <span>自動スクロール</span>
+                </label>
+                <button class="btn btn-sm btn-outline" id="btn-clear-logs">
+                  ログ消去
+                </button>
+              </div>
+            </div>
+            <div class="log-console" id="log-console">
+              <div class="log-line text-muted">
+                [待機中] サーバーと通信中...
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- 2. 設定ページ (DHUパス・headunit.ini設定) -->
+        <!-- ========================================================= -->
+        <section id="tab-settings" class="tab-pane">
+          <header class="pane-header">
+            <h2>設定</h2>
+            <p class="subtitle">
+              DHU実行ファイルのパスおよび ~/.android/headunit.ini
+              のパラメータを調整します
+            </p>
+          </header>
+
+          <form id="settings-form">
+            <!-- DHU実行ファイル設定 -->
+            <div class="card setting-section">
+              <div class="section-title">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"
+                  />
+                </svg>
+                <h3>Desktop Head Unit 実行ファイル設定</h3>
+              </div>
+              <p class="help-text">
+                Linux側でインストールされた
+                <code>desktop-head-unit</code> バイナリのフルパスを指定します。
+                （前提: Android SDK の
+                <code>extras;google;auto</code> がインストール済み）
+              </p>
+
+              <div class="form-group">
+                <label for="input-dhu-path">desktop-head-unit のパス</label>
+                <div class="input-with-button">
+                  <input
+                    type="text"
+                    id="input-dhu-path"
+                    class="form-input"
+                    placeholder="/home/username/Android/Sdk/extras/google/auto/desktop-head-unit"
+                    required
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    id="btn-auto-detect"
+                  >
+                    標準パス自動探索
+                  </button>
+                </div>
+                <div class="validation-status" id="dhu-path-validation">
+                  <span class="badge badge-info">確認中...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- headunit.ini 設定 -->
+            <div class="card setting-section">
+              <div class="section-title">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+                  />
+                </svg>
+                <h3>Headunit 設定 (<code>~/.android/headunit.ini</code>)</h3>
+              </div>
+              <p class="help-text">
+                Google DHUの設定ファイル <code>~/.android/headunit.ini</code> の
+                [General] セクションを直接反映します。
+              </p>
+
+              <div class="settings-grid">
+                <!-- タッチパネル (touch) -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-name">タッチパネルの許可 (touch)</span>
+                    <span class="setting-desc"
+                      >画面クリック・タッチスクリーン入力を有効にします</span
+                    >
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="input-touch" />
+                    <span class="slider"></span>
+                  </label>
                 </div>
 
-                <div class="dashboard-grid">
-                    <!-- コントロールカード -->
-                    <div class="card control-card">
-                        <div class="status-display-large">
-                            <div class="status-ring" id="status-ring">
-                                <div class="status-icon" id="status-icon">
-                                    <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
-                                        <path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-                                    </svg>
-                                </div>
-                            </div>
-                            <div class="status-text-group">
-                                <h3 id="main-status-title">待機中 (停止)</h3>
-                                <p id="main-status-desc">接続方式を選び、「接続開始」を押してください。</p>
-                            </div>
-                        </div>
-
-                        <!-- 10秒自動復帰カウントダウン通知（切断時に表示） -->
-                        <div class="reconnect-banner" id="reconnect-banner" style="display: none;">
-                            <div class="reconnect-header">
-                                <span class="reconnect-title">⚠️ 切断を検知しました (自動復帰待機中)</span>
-                                <span class="reconnect-timer" id="countdown-timer">10秒</span>
-                            </div>
-                            <div class="progress-bar-bg">
-                                <div class="progress-bar-fill" id="countdown-progress"></div>
-                            </div>
-                            <p class="reconnect-sub" id="reconnect-sub">USBケーブルを挿し直してください。自動的にDHUを再起動します。</p>
-                        </div>
-
-                        <!-- 接続ボタン群 -->
-                        <div class="action-buttons">
-                            <button id="btn-start" class="btn btn-primary btn-large">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                                    <path d="M8 5v14l11-7z"/>
-                                </svg>
-                                <span>接続開始 (DHU起動)</span>
-                            </button>
-                            <button id="btn-stop" class="btn btn-danger btn-large" disabled>
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                                    <path d="M6 6h12v12H6z"/>
-                                </svg>
-                                <span>切断 / 停止</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- クイックサマリーカード -->
-                    <div class="card summary-card">
-                        <h3>現在の設定サマリー</h3>
-                        <div class="summary-list">
-                            <div class="summary-item">
-                                <span class="label">接続方式</span>
-                                <span class="value" id="summary-connection">--</span>
-                            </div>
-                            <div class="summary-item">
-                                <span class="label">接続先</span>
-                                <span class="value" id="summary-target">--</span>
-                            </div>
-                            <div class="summary-item">
-                                <span class="label">解像度</span>
-                                <span class="value" id="summary-resolution">--</span>
-                            </div>
-                            <div class="summary-item">
-                                <span class="label">最大フレームレート</span>
-                                <span class="value" id="summary-framerate">--</span>
-                            </div>
-                            <div class="summary-item">
-                                <span class="label">画面密度 (DPI)</span>
-                                <span class="value" id="summary-dpi">--</span>
-                            </div>
-                            <div class="summary-item">
-                                <span class="label">タッチパネル</span>
-                                <span class="value" id="summary-touch">--</span>
-                            </div>
-                            <div class="summary-item">
-                                <span class="label">DHUパス状態</span>
-                                <span class="value status-badge" id="summary-dhu-status">確認中</span>
-                            </div>
-                        </div>
-                        <div class="card-footer-action">
-                            <button class="btn btn-secondary btn-sm" id="btn-goto-settings">設定を変更する</button>
-                        </div>
-                    </div>
+                <!-- タッチパッド (touchpad) -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-name">タッチパッド (touchpad)</span>
+                    <span class="setting-desc"
+                      >基本は false のままで問題ありません</span
+                    >
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="input-touchpad" />
+                    <span class="slider"></span>
+                  </label>
                 </div>
 
-                <!-- リアルタイムログカード -->
-                <div class="card log-card">
-                    <div class="log-card-header">
-                        <h3>実行ログ</h3>
-                        <div class="log-actions">
-                            <label class="checkbox-inline">
-                                <input type="checkbox" id="chk-autoscroll" checked>
-                                <span>自動スクロール</span>
-                            </label>
-                            <button class="btn btn-sm btn-outline" id="btn-clear-logs">ログ消去</button>
-                        </div>
-                    </div>
-                    <div class="log-console" id="log-console">
-                        <div class="log-line text-muted">[待機中] サーバーと通信中...</div>
-                    </div>
+                <!-- 解像度 (resolution) -->
+                <div class="setting-item full-width">
+                  <div class="setting-info">
+                    <span class="setting-name">解像度 (resolution)</span>
+                    <span class="setting-desc"
+                      >DHUのウィンドウ解像度（横x縦）を指定します</span
+                    >
+                  </div>
+                  <div class="resolution-inputs">
+                    <select id="select-resolution" class="form-select">
+                      <option value="1920x1080">
+                        1920x1080 (FHD 16:9 - 推奨)
+                      </option>
+                      <option value="1280x720">1280x720 (HD 16:9)</option>
+                      <option value="800x480">800x480 (標準車載サイズ)</option>
+                      <option value="2560x1440">2560x1440 (2K WQHD)</option>
+                      <option value="custom">カスタム手動入力...</option>
+                    </select>
+                    <input
+                      type="text"
+                      id="input-resolution"
+                      class="form-input"
+                      placeholder="1920x1080"
+                      style="display: none"
+                    />
+                  </div>
                 </div>
-            </section>
 
+                <!-- DPI (dpi) -->
+                <div class="setting-item full-width">
+                  <div class="setting-info">
+                    <span class="setting-name">画面密度 (dpi)</span>
+                    <span class="setting-desc"
+                      >UIの表示倍率（標準:
+                      280、値が大きいほどUIが大きく表示されます）</span
+                    >
+                  </div>
+                  <div class="range-group">
+                    <input
+                      type="range"
+                      id="range-dpi"
+                      min="120"
+                      max="480"
+                      step="10"
+                      value="280"
+                      class="form-range"
+                    />
+                    <input
+                      type="number"
+                      id="input-dpi"
+                      min="100"
+                      max="600"
+                      value="280"
+                      class="form-input number-input"
+                    />
+                  </div>
+                </div>
 
-            <!-- ========================================================= -->
-            <!-- 2. 設定ページ (DHUパス・headunit.ini設定) -->
-            <!-- ========================================================= -->
-            <section id="tab-settings" class="tab-pane">
-                <header class="pane-header">
-                    <h2>設定</h2>
-                    <p class="subtitle">DHU実行ファイルのパスおよび ~/.android/headunit.ini のパラメータを調整します</p>
-                </header>
+                <!-- 最大フレームレート (framerate) -->
+                <div class="setting-item full-width">
+                  <div class="setting-info">
+                    <span class="setting-name"
+                      >最大フレームレート (framerate)</span
+                    >
+                    <span class="setting-desc"
+                      >描画の滑らかさ（30 または 60 fps）</span
+                    >
+                  </div>
+                  <div class="radio-pill-group">
+                    <label class="radio-pill">
+                      <input type="radio" name="framerate" value="30" checked />
+                      <span>30 fps (標準・安定)</span>
+                    </label>
+                    <label class="radio-pill">
+                      <input type="radio" name="framerate" value="60" />
+                      <span>60 fps (超滑らか)</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
 
-                <form id="settings-form">
-                    <!-- DHU実行ファイル設定 -->
-                    <div class="card setting-section">
-                        <div class="section-title">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                                <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-                            </svg>
-                            <h3>Desktop Head Unit 実行ファイル設定</h3>
-                        </div>
-                        <p class="help-text">
-                            Linux側でインストールされた <code>desktop-head-unit</code> バイナリのフルパスを指定します。
-                            （前提: Android SDK の <code>extras;google;auto</code> がインストール済み）
-                        </p>
+              <!-- iniファイルプレビュー -->
+              <div class="ini-preview-wrapper">
+                <span class="preview-title"
+                  >プレビュー: <code>~/.android/headunit.ini</code></span
+                >
+                <pre class="ini-preview" id="ini-preview"># 読み込み中...</pre>
+              </div>
+            </div>
 
-                        <div class="form-group">
-                            <label for="input-dhu-path">desktop-head-unit のパス</label>
-                            <div class="input-with-button">
-                                <input type="text" id="input-dhu-path" class="form-input" placeholder="/home/username/Android/Sdk/extras/google/auto/desktop-head-unit" required>
-                                <button type="button" class="btn btn-secondary" id="btn-auto-detect">標準パス自動探索</button>
-                            </div>
-                            <div class="validation-status" id="dhu-path-validation">
-                                <span class="badge badge-info">確認中...</span>
-                            </div>
-                        </div>
-                    </div>
+            <!-- 保存バー -->
+            <div class="settings-actions">
+              <button
+                type="submit"
+                class="btn btn-primary btn-large"
+                id="btn-save-settings"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"
+                  />
+                </svg>
+                <span>設定を保存する</span>
+              </button>
+              <span id="save-status-msg" class="save-status-msg"></span>
+            </div>
+          </form>
+        </section>
 
-                    <!-- headunit.ini 設定 -->
-                    <div class="card setting-section">
-                        <div class="section-title">
-                            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-                                <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                            </svg>
-                            <h3>Headunit 設定 (<code>~/.android/headunit.ini</code>)</h3>
-                        </div>
-                        <p class="help-text">Google DHUの設定ファイル <code>~/.android/headunit.ini</code> の [General] セクションを直接反映します。</p>
+        <!-- ========================================================= -->
+        <!-- 3. 導入ガイド (Android SDK / DHU / 自動起動の解説) -->
+        <!-- ========================================================= -->
+        <section id="tab-guide" class="tab-pane">
+          <header class="pane-header">
+            <h2>導入・設定ガイド</h2>
+            <p class="subtitle">
+              Android SDK、Desktop Head Unit (DHU) の導入から
+              Wi-Fi（テザリング）接続、Linux
+              の自動起動設定までステップ順に解説します
+            </p>
+          </header>
 
-                        <div class="settings-grid">
-                            <!-- タッチパネル (touch) -->
-                            <div class="setting-item">
-                                <div class="setting-info">
-                                    <span class="setting-name">タッチパネルの許可 (touch)</span>
-                                    <span class="setting-desc">画面クリック・タッチスクリーン入力を有効にします</span>
-                                </div>
-                                <label class="switch">
-                                    <input type="checkbox" id="input-touch">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
+          <div class="card guide-card">
+            <!-- STEP 1 -->
+            <div class="guide-step">
+              <div class="step-number">1</div>
+              <div class="step-body">
+                <h3>Android SDK と Google DHU の導入</h3>
+                <p class="step-lead">
+                  Linux Auto を動かすには、Google公式の
+                  <code>desktop-head-unit</code> バイナリ（パッケージ名:
+                  <code>extras;google;auto</code>）が必要です。
+                  以下のいずれかの方法でインストールしてください。
+                </p>
 
-                            <!-- タッチパッド (touchpad) -->
-                            <div class="setting-item">
-                                <div class="setting-info">
-                                    <span class="setting-name">タッチパッド (touchpad)</span>
-                                    <span class="setting-desc">基本は false のままで問題ありません</span>
-                                </div>
-                                <label class="switch">
-                                    <input type="checkbox" id="input-touchpad">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
+                <!-- パターンA: ターミナルでサクッと導入 -->
+                <div class="guide-sub-section">
+                  <h4>
+                    方法A: ターミナルから導入（おすすめ・Android Studio不要）
+                  </h4>
+                  <p>
+                    巨大な Android Studio
+                    を入れずに、コマンドラインツールだけで最速インストールする手順です。
+                  </p>
 
-                            <!-- 解像度 (resolution) -->
-                            <div class="setting-item full-width">
-                                <div class="setting-info">
-                                    <span class="setting-name">解像度 (resolution)</span>
-                                    <span class="setting-desc">DHUのウィンドウ解像度（横x縦）を指定します</span>
-                                </div>
-                                <div class="resolution-inputs">
-                                    <select id="select-resolution" class="form-select">
-                                        <option value="1920x1080">1920x1080 (FHD 16:9 - 推奨)</option>
-                                        <option value="1280x720">1280x720 (HD 16:9)</option>
-                                        <option value="800x480">800x480 (標準車載サイズ)</option>
-                                        <option value="2560x1440">2560x1440 (2K WQHD)</option>
-                                        <option value="custom">カスタム手動入力...</option>
-                                    </select>
-                                    <input type="text" id="input-resolution" class="form-input" placeholder="1920x1080" style="display: none;">
-                                </div>
-                            </div>
-
-                            <!-- DPI (dpi) -->
-                            <div class="setting-item full-width">
-                                <div class="setting-info">
-                                    <span class="setting-name">画面密度 (dpi)</span>
-                                    <span class="setting-desc">UIの表示倍率（標準: 280、値が大きいほどUIが大きく表示されます）</span>
-                                </div>
-                                <div class="range-group">
-                                    <input type="range" id="range-dpi" min="120" max="480" step="10" value="280" class="form-range">
-                                    <input type="number" id="input-dpi" min="100" max="600" value="280" class="form-input number-input">
-                                </div>
-                            </div>
-
-                            <!-- 最大フレームレート (framerate) -->
-                            <div class="setting-item full-width">
-                                <div class="setting-info">
-                                    <span class="setting-name">最大フレームレート (framerate)</span>
-                                    <span class="setting-desc">描画の滑らかさ（30 または 60 fps）</span>
-                                </div>
-                                <div class="radio-pill-group">
-                                    <label class="radio-pill">
-                                        <input type="radio" name="framerate" value="30" checked>
-                                        <span>30 fps (標準・安定)</span>
-                                    </label>
-                                    <label class="radio-pill">
-                                        <input type="radio" name="framerate" value="60">
-                                        <span>60 fps (超滑らか)</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- iniファイルプレビュー -->
-                        <div class="ini-preview-wrapper">
-                            <span class="preview-title">プレビュー: <code>~/.android/headunit.ini</code></span>
-                            <pre class="ini-preview" id="ini-preview"># 読み込み中...</pre>
-                        </div>
-                    </div>
-
-                    <!-- 保存バー -->
-                    <div class="settings-actions">
-                        <button type="submit" class="btn btn-primary btn-large" id="btn-save-settings">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-                            </svg>
-                            <span>設定を保存する</span>
+                  <ol>
+                    <li>
+                      必要なJava環境と解凍ツールをインストールします：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget"
+                        >
+                          コピー
                         </button>
-                        <span id="save-status-msg" class="save-status-msg"></span>
-                    </div>
-                </form>
-            </section>
-
-
-            <!-- ========================================================= -->
-            <!-- 3. 導入ガイド (Android SDK / DHU / 自動起動の解説) -->
-            <!-- ========================================================= -->
-            <section id="tab-guide" class="tab-pane">
-                <header class="pane-header">
-                    <h2>導入・設定ガイド</h2>
-                    <p class="subtitle">Android SDK、Desktop Head Unit (DHU) の導入から Wi-Fi（テザリング）接続、Linux の自動起動設定までステップ順に解説します</p>
-                </header>
-
-                <div class="card guide-card">
-                    
-                    <!-- STEP 1 -->
-                    <div class="guide-step">
-                        <div class="step-number">1</div>
-                        <div class="step-body">
-                            <h3>Android SDK と Google DHU の導入</h3>
-                            <p class="step-lead">
-                                Linux Auto を動かすには、Google公式の <code>desktop-head-unit</code> バイナリ（パッケージ名: <code>extras;google;auto</code>）が必要です。
-                                以下のいずれかの方法でインストールしてください。
-                            </p>
-
-                            <!-- パターンA: ターミナルでサクッと導入 -->
-                            <div class="guide-sub-section">
-                                <h4>方法A: ターミナルから導入（おすすめ・Android Studio不要）</h4>
-                                <p>巨大な Android Studio を入れずに、コマンドラインツールだけで最速インストールする手順です。</p>
-                                
-                                <ol>
-                                    <li>必要なJava環境と解凍ツールをインストールします：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget</pre>
-                                            <button class="btn-copy" data-copy="sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li>Android SDKディレクトリを作成し、公式コマンドラインツールを配置します：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">mkdir -p ~/Android/Sdk/cmdline-tools
+                      </div>
+                    </li>
+                    <li>
+                      Android
+                      SDKディレクトリを作成し、公式コマンドラインツールを配置します：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+mkdir -p ~/Android/Sdk/cmdline-tools
 cd ~/Android/Sdk/cmdline-tools
 wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip</pre>
-                                            <button class="btn-copy" data-copy="mkdir -p ~/Android/Sdk/cmdline-tools &amp;&amp; cd ~/Android/Sdk/cmdline-tools &amp;&amp; wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip &amp;&amp; unzip cmdline-tools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdline-tools.zip">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li><code>extras;google;auto</code>（DHU）をインストールします：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "extras;google;auto"</pre>
-                                            <button class="btn-copy" data-copy="yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk &quot;extras;google;auto&quot;">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li>バイナリに実行権限を付与します：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre>
-                                            <button class="btn-copy" data-copy="chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit">コピー</button>
-                                        </div>
-                                    </li>
-                                </ol>
-                            </div>
+unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="mkdir -p ~/Android/Sdk/cmdline-tools &amp;&amp; cd ~/Android/Sdk/cmdline-tools &amp;&amp; wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip &amp;&amp; unzip cmdline-tools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdline-tools.zip"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                    <li>
+                      <code>extras;google;auto</code
+                      >（DHU）をインストールします：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "extras;google;auto"</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy='yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "extras;google;auto"'
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                    <li>
+                      バイナリに実行権限を付与します：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                  </ol>
+                </div>
 
-                            <!-- パターンB: Android Studio (GUI) から導入 -->
-                            <div class="guide-sub-section">
-                                <h4>方法B: Android Studio (GUI) から導入する場合</h4>
-                                <ol>
-                                    <li>Android Studio を起動し、スタート画面の <strong>「More Actions」→「SDK Manager」</strong>（または設定内の「Languages &amp; Frameworks」→「Android SDK」）を開きます。</li>
-                                    <li>上部のタブで <strong>「SDK Tools」</strong> を選択します。</li>
-                                    <li>一覧の中にある <strong>「Android Auto Desktop Head Unit emulator」</strong> にチェックを入れます。</li>
-                                    <li>右下の <strong>「Apply」</strong> をクリックしてダウンロード・インストールを完了させます。</li>
-                                    <li>インストール完了後、以下のパスに実行ファイルが配置されます：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre>
-                                            <button class="btn-copy" data-copy="chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit">コピー</button>
-                                        </div>
-                                    </li>
-                                </ol>
-                            </div>
+                <!-- パターンB: Android Studio (GUI) から導入 -->
+                <div class="guide-sub-section">
+                  <h4>方法B: Android Studio (GUI) から導入する場合</h4>
+                  <ol>
+                    <li>
+                      Android Studio を起動し、スタート画面の
+                      <strong>「More Actions」→「SDK Manager」</strong
+                      >（または設定内の「Languages &amp; Frameworks」→「Android
+                      SDK」）を開きます。
+                    </li>
+                    <li>
+                      上部のタブで <strong>「SDK Tools」</strong> を選択します。
+                    </li>
+                    <li>
+                      一覧の中にある
+                      <strong
+                        >「Android Auto Desktop Head Unit emulator」</strong
+                      >
+                      にチェックを入れます。
+                    </li>
+                    <li>
+                      右下の
+                      <strong>「Apply」</strong>
+                      をクリックしてダウンロード・インストールを完了させます。
+                    </li>
+                    <li>
+                      インストール完了後、以下のパスに実行ファイルが配置されます：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                  </ol>
+                </div>
 
-                            <div class="callout callout-tip">
-                                💡 <strong>パスの確認:</strong> インストール完了後、本アプリの「設定」画面を開き、「標準パス自動探索」ボタンを押すだけで自動認識されます。
-                            </div>
-                        </div>
-                    </div>
+                <div class="callout callout-tip">
+                  💡
+                  <strong>パスの確認:</strong>
+                  インストール完了後、本アプリの「設定」画面を開き、「標準パス自動探索」ボタンを押すだけで自動認識されます。
+                </div>
+              </div>
+            </div>
 
-                    <!-- STEP 2 -->
-                    <div class="guide-step">
-                        <div class="step-number">2</div>
-                        <div class="step-body">
-                            <h3>スマートフォン側の設定 (Android Auto 開発者モード)</h3>
-                            <p class="step-lead">
-                                Androidスマートフォン側で、車載通信サーバー（ヘッドユニットサーバー）を起動する必要があります。
-                            </p>
+            <!-- STEP 2 -->
+            <div class="guide-step">
+              <div class="step-number">2</div>
+              <div class="step-body">
+                <h3>スマートフォン側の設定 (Android Auto 開発者モード)</h3>
+                <p class="step-lead">
+                  Androidスマートフォン側で、車載通信サーバー（ヘッドユニットサーバー）を起動する必要があります。
+                </p>
 
-                            <div class="guide-sub-section">
-                                <h4>スマホ側の操作手順</h4>
-                                <ol>
-                                    <li>スマートフォンの「設定」アプリを開き、検索バーで <strong>「Android Auto」</strong> を検索して開きます。</li>
-                                    <li>画面を一番下までスクロールし、<strong>「バージョン」</strong> という項目を <strong>10回連続でタップ</strong> します。</li>
-                                    <li>「開発者向け設定を有効にしますか？」とポップアップが出るので <strong>「OK」</strong> をタップします。</li>
-                                    <li>画面右上の <strong>「︙（メニュー）」</strong> をタップし、<strong>「ヘッドユニットサーバーを起動」</strong> を選択します。</li>
-                                    <li>スマートフォンとPCをUSBケーブルで接続します（充電専用ケーブルではなく、データ通信対応ケーブルをご使用ください）。</li>
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
+                <div class="guide-sub-section">
+                  <h4>スマホ側の操作手順</h4>
+                  <ol>
+                    <li>
+                      スマートフォンの「設定」アプリを開き、検索バーで
+                      <strong>「Android Auto」</strong> を検索して開きます。
+                    </li>
+                    <li>
+                      画面を一番下までスクロールし、<strong
+                        >「バージョン」</strong
+                      >
+                      という項目を <strong>10回連続でタップ</strong> します。
+                    </li>
+                    <li>
+                      「開発者向け設定を有効にしますか？」とポップアップが出るので
+                      <strong>「OK」</strong> をタップします。
+                    </li>
+                    <li>
+                      画面右上の
+                      <strong>「︙（メニュー）」</strong> をタップし、<strong
+                        >「ヘッドユニットサーバーを起動」</strong
+                      >
+                      を選択します。
+                    </li>
+                    <li>
+                      スマートフォンとPCをUSBケーブルで接続します（充電専用ケーブルではなく、データ通信対応ケーブルをご使用ください）。
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </div>
 
-                    <!-- STEP 3: Wi-Fi -->
-                    <div class="guide-step">
-                        <div class="step-number">3</div>
-                        <div class="step-body">
-                            <h3>Wi-Fi（テザリング）で接続する場合の準備</h3>
-                            <p class="step-lead">
-                                Linux 端末をスマホのテザリング（Wi-Fi アクセスポイント）に接続して、ケーブルなしで Android Auto を使う手順です。
-                                メイン画面で「Wi-Fi接続」を選び、<strong>方法1（ADB）</strong> か <strong>方法2（ヘッドユニットサーバーへ直接）</strong> を選択します。
-                            </p>
+            <!-- STEP 3: Wi-Fi -->
+            <div class="guide-step">
+              <div class="step-number">3</div>
+              <div class="step-body">
+                <h3>Wi-Fi（テザリング）で接続する場合の準備</h3>
+                <p class="step-lead">
+                  Linux 端末をスマホのテザリング（Wi-Fi
+                  アクセスポイント）に接続して、ケーブルなしで Android Auto
+                  を使う手順です。 メイン画面で「Wi-Fi接続」を選び、<strong
+                    >方法1（ADB）</strong
+                  >
+                  か
+                  <strong>方法2（ヘッドユニットサーバーへ直接）</strong>
+                  を選択します。
+                </p>
 
-                            <div class="guide-sub-section">
-                                <h4>共通: テザリングに接続してヘッドユニットサーバーを起動</h4>
-                                <ol>
-                                    <li>スマホの「テザリング（Wi-Fi アクセスポイント）」を ON にし、Linux 端末をそのアクセスポイントに Wi-Fi 接続します。</li>
-                                    <li>スマホの Android Auto 設定 →「︙」→ <strong>「ヘッドユニットサーバーを起動」</strong> をタップします（通知が表示されれば起動中です）。</li>
-                                    <li>メイン画面の「ネットワーク状態」で、<strong>スマホのIP（ゲートウェイ）</strong> が表示されていることを確認します。</li>
-                                </ol>
-                                <div class="callout callout-tip">
-                                    <span>💡 <strong>スマホの IP は自動検出されます。</strong> テザリング中は Linux 端末のデフォルトゲートウェイ＝スマホ本体です。
-                                    Android 11 以降はテザリングのアドレスが接続のたびに変わることがあるため、「自動（テザリング親機を検出）」のままの利用をおすすめします。
-                                    自宅ルーター等の同一 LAN で使う場合は「手動入力」にスマホの IP を入力してください。</span>
-                                </div>
-                            </div>
+                <div class="guide-sub-section">
+                  <h4>
+                    共通: テザリングに接続してヘッドユニットサーバーを起動
+                  </h4>
+                  <ol>
+                    <li>
+                      スマホの「テザリング（Wi-Fi アクセスポイント）」を ON
+                      にし、Linux 端末をそのアクセスポイントに Wi-Fi
+                      接続します。
+                    </li>
+                    <li>
+                      スマホの Android Auto 設定 →「︙」→
+                      <strong>「ヘッドユニットサーバーを起動」</strong>
+                      をタップします（通知が表示されれば起動中です）。
+                    </li>
+                    <li>
+                      メイン画面の「ネットワーク状態」で、<strong
+                        >スマホのIP（ゲートウェイ）</strong
+                      >
+                      が表示されていることを確認します。
+                    </li>
+                  </ol>
+                  <div class="callout callout-tip">
+                    <span
+                      >💡
+                      <strong>スマホの IP は自動検出されます。</strong>
+                      テザリング中は Linux
+                      端末のデフォルトゲートウェイ＝スマホ本体です。 Android 11
+                      以降はテザリングのアドレスが接続のたびに変わることがあるため、「自動（テザリング親機を検出）」のままの利用をおすすめします。
+                      自宅ルーター等の同一 LAN
+                      で使う場合は「手動入力」にスマホの IP
+                      を入力してください。</span
+                    >
+                  </div>
+                </div>
 
-                            <div class="guide-sub-section">
-                                <h4>方法1: ADB（Wi-Fiデバッグ）＋ポートフォワーディング（開発・テスト向け）</h4>
-                                <p>adb が必要です。未導入の場合はインストールします：</p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "platform-tools"</pre>
-                                    <button class="btn-copy" data-copy="~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk &quot;platform-tools&quot;">コピー</button>
-                                </div>
-                                <p style="margin-top: 1rem;"><strong>【A: adb tcpip 方式】テザリング運用ではこちらがおすすめ</strong></p>
-                                <ol>
-                                    <li>スマホの「開発者向けオプション」で <strong>USB デバッグ</strong> を ON にします。</li>
-                                    <li>スマホを一度だけ USB で接続し、メイン画面の <strong>「① USB経由で TCP/IP モードを有効化」</strong> を押します（スマホに許可ダイアログが出たら「許可」）。</li>
-                                    <li>USB ケーブルを外し、<strong>「② Wi-Fi で接続テスト」</strong> で「connected to …」と表示されることを確認します。</li>
-                                    <li>「接続開始」を押すと、<code>adb connect</code> → <code>adb forward tcp:5277 tcp:5277</code> → DHU 起動が自動で行われます。</li>
-                                </ol>
-                                <p class="help-text">※ スマホを再起動すると TCP/IP モードは解除されるため、② からやり直す前に ① を再実行してください。</p>
-                                <p class="help-text">手動で行う場合のコマンド（<code>&lt;スマホIP&gt;</code> はゲートウェイの IP）：</p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">adb tcpip 5555            # USB 接続中に一度だけ
+                <div class="guide-sub-section">
+                  <h4>
+                    方法1:
+                    ADB（Wi-Fiデバッグ）＋ポートフォワーディング（開発・テスト向け）
+                  </h4>
+                  <p>adb が必要です。未導入の場合はインストールします：</p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "platform-tools"</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy='~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "platform-tools"'
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p style="margin-top: 1rem">
+                    <strong
+                      >【A: adb tcpip
+                      方式】テザリング運用ではこちらがおすすめ</strong
+                    >
+                  </p>
+                  <ol>
+                    <li>
+                      スマホの「開発者向けオプション」で
+                      <strong>USB デバッグ</strong> を ON にします。
+                    </li>
+                    <li>
+                      スマホを一度だけ USB で接続し、メイン画面の
+                      <strong>「① USB経由で TCP/IP モードを有効化」</strong>
+                      を押します（スマホに許可ダイアログが出たら「許可」）。
+                    </li>
+                    <li>
+                      USB ケーブルを外し、<strong
+                        >「② Wi-Fi で接続テスト」</strong
+                      >
+                      で「connected to …」と表示されることを確認します。
+                    </li>
+                    <li>
+                      「接続開始」を押すと、<code>adb connect</code> →
+                      <code>adb forward tcp:5277 tcp:5277</code> → DHU
+                      起動が自動で行われます。
+                    </li>
+                  </ol>
+                  <p class="help-text">
+                    ※ スマホを再起動すると TCP/IP モードは解除されるため、②
+                    からやり直す前に ① を再実行してください。
+                  </p>
+                  <p class="help-text">
+                    手動で行う場合のコマンド（<code>&lt;スマホIP&gt;</code>
+                    はゲートウェイの IP）：
+                  </p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+adb tcpip 5555            # USB 接続中に一度だけ
 adb connect &lt;スマホIP&gt;:5555
 adb forward tcp:5277 tcp:5277
-./desktop-head-unit</pre>
-                                    <button class="btn-copy" data-copy="adb connect &lt;スマホIP&gt;:5555 &amp;&amp; adb forward tcp:5277 tcp:5277">コピー</button>
-                                </div>
+./desktop-head-unit</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy="adb connect &lt;スマホIP&gt;:5555 &amp;&amp; adb forward tcp:5277 tcp:5277"
+                    >
+                      コピー
+                    </button>
+                  </div>
 
-                                <p style="margin-top: 1rem;"><strong>【B: ワイヤレスデバッグ方式】Android 11 以降・同一 Wi-Fi ルーター環境向け</strong></p>
-                                <ol>
-                                    <li>「開発者向けオプション」→ <strong>ワイヤレスデバッグ</strong> を ON にします。</li>
-                                    <li>「ペア設定コードによるデバイスのペア設定」を開き、表示されたポートとコードをメイン画面の「ワイヤレスデバッグ（ペアリング）」欄に入力して「ペアリング」を押します。</li>
-                                    <li>ワイヤレスデバッグ画面の「IP アドレスとポート」のポート番号を <strong>ADB 接続ポート</strong> に入力し、「接続開始」を押します。</li>
-                                </ol>
-                                <p class="help-text">※ テザリングの親機になっているスマホでは、機種によってワイヤレスデバッグを ON にできません。その場合は A の方式を使用してください。</p>
-                            </div>
+                  <p style="margin-top: 1rem">
+                    <strong
+                      >【B: ワイヤレスデバッグ方式】Android 11 以降・同一 Wi-Fi
+                      ルーター環境向け</strong
+                    >
+                  </p>
+                  <ol>
+                    <li>
+                      「開発者向けオプション」→
+                      <strong>ワイヤレスデバッグ</strong> を ON にします。
+                    </li>
+                    <li>
+                      「ペア設定コードによるデバイスのペア設定」を開き、表示されたポートとコードをメイン画面の「ワイヤレスデバッグ（ペアリング）」欄に入力して「ペアリング」を押します。
+                    </li>
+                    <li>
+                      ワイヤレスデバッグ画面の「IP
+                      アドレスとポート」のポート番号を
+                      <strong>ADB 接続ポート</strong>
+                      に入力し、「接続開始」を押します。
+                    </li>
+                  </ol>
+                  <p class="help-text">
+                    ※
+                    テザリングの親機になっているスマホでは、機種によってワイヤレスデバッグを
+                    ON にできません。その場合は A の方式を使用してください。
+                  </p>
+                </div>
 
-                            <div class="guide-sub-section">
-                                <h4>方法2: ヘッドユニットサーバーへ直接接続（おすすめ・追加機材なし）</h4>
-                                <ol>
-                                    <li>共通手順でヘッドユニットサーバーを起動します（ADB や USB デバッグは不要です）。</li>
-                                    <li>メイン画面で「方法2」を選び、「接続開始」を押します（つながらない場合のみ <strong>「ヘッドユニットサーバーの疎通確認」</strong> で原因を確認します。疎通確認は接続を1回使うため、確認後はスマホでヘッドユニットサーバーを停止→起動し直してから接続してください）。</li>
-                                    <li>DHU が <code>--adb=&lt;スマホIP&gt;:5277</code> でスマホへ直接接続します。スマホのロックを解除し、Android Auto の確認画面が出たら許可してください。</li>
-                                </ol>
-                                <p class="help-text">手動で行う場合のコマンド：</p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">./desktop-head-unit --adb=&lt;スマホIP&gt;:5277</pre>
-                                    <button class="btn-copy" data-copy="./desktop-head-unit --adb=&lt;スマホIP&gt;:5277">コピー</button>
-                                </div>
-                                <p class="help-text">
-                                    ※ DHU から直接つながらない場合は、接続経路を <strong>「内蔵リレー経由」</strong> に切り替えてください。
-                                    <code>socat TCP-LISTEN:5277,fork TCP:&lt;スマホIP&gt;:5277</code> と同じ中継を Linux Auto が行うため、socat のインストールは不要です。<br>
-                                    ※ 疎通確認で「接続を拒否しました」となる場合、ヘッドユニットサーバーが起動していないか、お使いの端末・Android Auto のバージョンでは
-                                    Wi-Fi 側からの接続を受け付けていない可能性があります。その場合は方法1をご利用ください。<br>
-                                    ※ 接続はできても DHU が「Waiting for phone...」のまま進まない場合（約20秒で画面に警告が出ます）は、
-                                    スマホでヘッドユニットサーバーを停止→起動し直してください。それでも進まない端末では方法1をご利用ください。
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                <div class="guide-sub-section">
+                  <h4>
+                    方法2:
+                    ヘッドユニットサーバーへ直接接続（おすすめ・追加機材なし）
+                  </h4>
+                  <ol>
+                    <li>
+                      共通手順でヘッドユニットサーバーを起動します（ADB や USB
+                      デバッグは不要です）。
+                    </li>
+                    <li>
+                      メイン画面で「方法2」を選び、「接続開始」を押します（つながらない場合のみ
+                      <strong>「ヘッドユニットサーバーの疎通確認」</strong>
+                      で原因を確認します。疎通確認は接続を1回使うため、確認後はスマホでヘッドユニットサーバーを停止→起動し直してから接続してください）。
+                    </li>
+                    <li>
+                      DHU が
+                      <code>--adb=&lt;スマホIP&gt;:5277</code>
+                      でスマホへ直接接続します。スマホのロックを解除し、Android
+                      Auto の確認画面が出たら許可してください。
+                    </li>
+                  </ol>
+                  <p class="help-text">手動で行う場合のコマンド：</p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+./desktop-head-unit --adb=&lt;スマホIP&gt;:5277</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy="./desktop-head-unit --adb=&lt;スマホIP&gt;:5277"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    ※ DHU から直接つながらない場合は、接続経路を
+                    <strong>「内蔵リレー経由」</strong> に切り替えてください。
+                    <code
+                      >socat TCP-LISTEN:5277,fork
+                      TCP:&lt;スマホIP&gt;:5277</code
+                    >
+                    と同じ中継を Linux Auto が行うため、socat
+                    のインストールは不要です。<br />
+                    ※
+                    疎通確認で「接続を拒否しました」となる場合、ヘッドユニットサーバーが起動していないか、お使いの端末・Android
+                    Auto のバージョンでは Wi-Fi
+                    側からの接続を受け付けていない可能性があります。その場合は方法1をご利用ください。<br />
+                    ※ 接続はできても DHU が「Waiting for
+                    phone...」のまま進まない場合（約20秒で画面に警告が出ます）は、
+                    スマホでヘッドユニットサーバーを停止→起動し直してください。それでも進まない端末では方法1をご利用ください。
+                  </p>
+                </div>
+              </div>
+            </div>
 
-                    <!-- STEP 4 -->
-                    <div class="guide-step">
-                        <div class="step-number">4</div>
-                        <div class="step-body">
-                            <h3>サーバーをサービスとして自動起動する（systemd）</h3>
-                            <p class="step-lead">
-                                Linux Auto のサーバー（<code>app.py</code>）を systemd の <strong>ユーザーサービス</strong> として登録すると、
-                                PC にログインしたとき自動でバックグラウンド起動し、常駐するようになります。
-                                画面（このWebUI）を閉じてもサーバーと Android Auto 接続は止まりません。
-                            </p>
+            <!-- STEP 4 -->
+            <div class="guide-step">
+              <div class="step-number">4</div>
+              <div class="step-body">
+                <h3>サーバーをサービスとして自動起動する（systemd）</h3>
+                <p class="step-lead">
+                  Linux Auto のサーバー（<code>app.py</code>）を systemd の
+                  <strong>ユーザーサービス</strong> として登録すると、 PC
+                  にログインしたとき自動でバックグラウンド起動し、常駐するようになります。
+                  画面（このWebUI）を閉じてもサーバーと Android Auto
+                  接続は止まりません。
+                </p>
 
-                            <div class="callout callout-info">
-                                <span>🛈 現在のサーバー起動方式: <strong id="run-mode-label">確認中...</strong></span>
-                            </div>
+                <div class="callout callout-info">
+                  <span
+                    >🛈 現在のサーバー起動方式:
+                    <strong id="run-mode-label">確認中...</strong></span
+                  >
+                </div>
 
-                            <div class="guide-sub-section">
-                                <h4>1. サービスを登録する（初回のみ）</h4>
-                                <p>以下を実行するだけで、サービスの作成・自動起動の有効化・即時起動まで完了します：</p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">cd ~/LinuxAuto
+                <div class="guide-sub-section">
+                  <h4>1. サービスを登録する（初回のみ）</h4>
+                  <p>
+                    以下を実行するだけで、サービスの作成・自動起動の有効化・即時起動まで完了します：
+                  </p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+cd ~/LinuxAuto
 chmod +x install-service.sh
-./install-service.sh</pre>
-                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x install-service.sh &amp;&amp; ./install-service.sh">コピー</button>
-                                </div>
-                                <p class="help-text">
-                                    ※ <code>~/.config/systemd/user/linux-auto.service</code> が作成されます。<code>sudo</code> は不要です。<br>
-                                    ※ 以前の方式（<code>~/.config/autostart/linux-auto.desktop</code>）が残っている場合は、二重起動を防ぐため自動で無効化されます。<br>
-                                    ※ <code>./start.sh</code> で手動起動したサーバーが動いている場合は、先に Ctrl+C で終了してから登録してください。
-                                </p>
-                            </div>
+./install-service.sh</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x install-service.sh &amp;&amp; ./install-service.sh"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    ※
+                    <code>~/.config/systemd/user/linux-auto.service</code>
+                    が作成されます。<code>sudo</code> は不要です。<br />
+                    ※
+                    以前の方式（<code>~/.config/autostart/linux-auto.desktop</code>）が残っている場合は、二重起動を防ぐため自動で無効化されます。<br />
+                    ※
+                    <code>./start.sh</code>
+                    で手動起動したサーバーが動いている場合は、先に Ctrl+C
+                    で終了してから登録してください。
+                  </p>
+                </div>
 
-                            <div class="guide-sub-section">
-                                <h4>2. 電源投入直後（ログイン前）から起動したい場合（任意）</h4>
-                                <p>
-                                    通常はログイン時に起動します。車載PCなどでログイン前からサーバーを立ち上げておきたい場合は <code>--boot</code> を付けて登録します
-                                    （<code>loginctl enable-linger</code> が設定されます）：
-                                </p>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">./install-service.sh --boot</pre>
-                                    <button class="btn-copy" data-copy="./install-service.sh --boot">コピー</button>
-                                </div>
-                                <p class="help-text">
-                                    ※ Android Auto の画面（DHUのウィンドウ）はデスクトップに表示されるため、実際に接続するのはログイン後です。
-                                    自動ログインを有効にしておくと、電源を入れるだけで接続できる状態になります。
-                                </p>
-                            </div>
+                <div class="guide-sub-section">
+                  <h4>
+                    2. 電源投入直後（ログイン前）から起動したい場合（任意）
+                  </h4>
+                  <p>
+                    通常はログイン時に起動します。車載PCなどでログイン前からサーバーを立ち上げておきたい場合は
+                    <code>--boot</code> を付けて登録します （<code
+                      >loginctl enable-linger</code
+                    >
+                    が設定されます）：
+                  </p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">./install-service.sh --boot</pre>
+                    <button
+                      class="btn-copy"
+                      data-copy="./install-service.sh --boot"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    ※ Android Auto
+                    の画面（DHUのウィンドウ）はデスクトップに表示されるため、実際に接続するのはログイン後です。
+                    自動ログインを有効にしておくと、電源を入れるだけで接続できる状態になります。
+                  </p>
+                </div>
 
-                            <div class="guide-sub-section">
-                                <h4>3. サービスの操作コマンド</h4>
-                                <ul>
-                                    <li>状態確認：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">systemctl --user status linux-auto</pre>
-                                            <button class="btn-copy" data-copy="systemctl --user status linux-auto">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li>ログをリアルタイム表示：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">journalctl --user -u linux-auto -f</pre>
-                                            <button class="btn-copy" data-copy="journalctl --user -u linux-auto -f">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li>再起動（<code>git pull</code> 等でコードを更新した後は必ず実行）：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">systemctl --user restart linux-auto</pre>
-                                            <button class="btn-copy" data-copy="systemctl --user restart linux-auto">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li>停止 / 起動：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">systemctl --user stop linux-auto
-systemctl --user start linux-auto</pre>
-                                            <button class="btn-copy" data-copy="systemctl --user stop linux-auto">コピー</button>
-                                        </div>
-                                    </li>
-                                    <li>登録解除（自動起動をやめる）：
-                                        <div class="code-block-wrapper">
-                                            <pre class="code-block">./install-service.sh --uninstall</pre>
-                                            <button class="btn-copy" data-copy="./install-service.sh --uninstall">コピー</button>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+                <div class="guide-sub-section">
+                  <h4>3. サービスの操作コマンド</h4>
+                  <ul>
+                    <li>
+                      状態確認：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+systemctl --user status linux-auto</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="systemctl --user status linux-auto"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                    <li>
+                      ログをリアルタイム表示：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+journalctl --user -u linux-auto -f</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="journalctl --user -u linux-auto -f"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                    <li>
+                      再起動（<code>git pull</code>
+                      等でコードを更新した後は必ず実行）：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+systemctl --user restart linux-auto</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="systemctl --user restart linux-auto"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                    <li>
+                      停止 / 起動：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+systemctl --user stop linux-auto
+systemctl --user start linux-auto</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="systemctl --user stop linux-auto"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                    <li>
+                      登録解除（自動起動をやめる）：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+./install-service.sh --uninstall</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="./install-service.sh --uninstall"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
 
-                    <!-- STEP 5 -->
-                    <div class="guide-step">
-                        <div class="step-number">5</div>
-                        <div class="step-body">
-                            <h3>起動アイコン（画面を開くだけ）を登録する</h3>
-                            <p class="step-lead">
-                                デスクトップ / アプリメニューの「Linux Auto」アイコンは、<strong>この画面を開くためだけのランチャー</strong>（<code>open-ui.sh</code>）です。
-                                サーバーはサービスとして常駐しているので、アイコンを押すたびにサーバーが起動し直すことはありません。
-                            </p>
+            <!-- STEP 5 -->
+            <div class="guide-step">
+              <div class="step-number">5</div>
+              <div class="step-body">
+                <h3>起動アイコン（画面を開くだけ）を登録する</h3>
+                <p class="step-lead">
+                  デスクトップ / アプリメニューの「Linux
+                  Auto」アイコンは、<strong>この画面を開くためだけのランチャー</strong>（<code>open-ui.sh</code>）です。
+                  サーバーはサービスとして常駐しているので、アイコンを押すたびにサーバーが起動し直すことはありません。
+                </p>
 
-                            <div class="guide-sub-section">
-                                <h4>1. アイコンを登録する</h4>
-                                <div class="code-block-wrapper">
-                                    <pre class="code-block">cd ~/LinuxAuto
+                <div class="guide-sub-section">
+                  <h4>1. アイコンを登録する</h4>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+cd ~/LinuxAuto
 chmod +x install-desktop-shortcut.sh
-./install-desktop-shortcut.sh</pre>
-                                    <button class="btn-copy" data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x install-desktop-shortcut.sh &amp;&amp; ./install-desktop-shortcut.sh">コピー</button>
-                                </div>
-                                <p class="help-text">
-                                    ※ 以前のバージョンでアイコンを登録済みの場合も、もう一度実行してください（アイコンの起動先が <code>open-ui.sh</code> に切り替わります）。
-                                </p>
-                            </div>
-
-                            <div class="guide-sub-section">
-                                <h4>2. アイコンを押したときの動作</h4>
-                                <ol>
-                                    <li>サーバーが応答していれば、そのままブラウザ（またはPWA）でこの画面を開きます。</li>
-                                    <li>サービスが停止していた場合は、<code>systemctl --user start linux-auto</code> で起動してから画面を開きます。</li>
-                                    <li>サービス未登録の場合のみ、サーバーを一時的にバックグラウンド起動します（ログ: <code>~/.cache/linux-auto/server.log</code>）。</li>
-                                </ol>
-                                <div class="callout callout-tip">
-                                    <span>💡 <strong>ブラウザを閉じても接続は切れません。</strong> Android Auto を終了したいときは、この画面の「切断 / 停止」ボタンを押してください。</span>
-                                </div>
-                            </div>
-
-                            <div class="guide-sub-section">
-                                <h4>参考: ターミナルで直接実行する場合</h4>
-                                <p>デバッグ時などは、サーバーをフォアグラウンドで起動（<code>./start.sh</code>）したり、DHUを直接実行（<code>./connect.sh</code>）したりできます。サービスが動いている間に <code>./start.sh</code> を実行すると、二重起動せず画面だけが開きます。</p>
-                            </div>
-                        </div>
-                    </div>
-
+./install-desktop-shortcut.sh</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy="cd ~/LinuxAuto &amp;&amp; chmod +x install-desktop-shortcut.sh &amp;&amp; ./install-desktop-shortcut.sh"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    ※
+                    以前のバージョンでアイコンを登録済みの場合も、もう一度実行してください（アイコンの起動先が
+                    <code>open-ui.sh</code> に切り替わります）。
+                  </p>
                 </div>
-            </section>
 
-
-            <!-- ========================================================= -->
-            <!-- 4. Aboutページ (開発者・プロジェクト情報) -->
-            <!-- ========================================================= -->
-            <section id="tab-about" class="tab-pane">
-                <header class="pane-header">
-                    <h2>About Linux Auto</h2>
-                    <p class="subtitle">プロジェクトおよび開発者情報</p>
-                </header>
-
-                <div class="card about-card">
-                    <div class="about-hero">
-                        <div class="about-logo">
-                            <svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor">
-                                <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z"/>
-                                <circle cx="7.5" cy="14.5" r="1.5"/>
-                                <circle cx="16.5" cy="14.5" r="1.5"/>
-                            </svg>
-                        </div>
-                        <div class="about-meta">
-                            <h3>Linux Auto</h3>
-                            <span class="app-version">Version 1.0.0 (Ubuntu & Kubuntu Edition)</span>
-                            <p class="about-tagline">
-                                Google DHU（Desktop Head Unit）だけではコマンドラインでの操作や設定が必要で難易度の高かった
-                                Ubuntu系列OSへのAndroid Auto接続を、ワンクリック＆GUIでサポートするツールです。
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="about-info-grid">
-                        <div class="info-block">
-                            <span class="info-label">プロジェクト名</span>
-                            <span class="info-value">Linux Auto</span>
-                        </div>
-                        <div class="info-block">
-                            <span class="info-label">開発者</span>
-                            <span class="info-value highlight">エノキ電気 ENOKI ELECTRONICS</span>
-                        </div>
-                        <div class="info-block">
-                            <span class="info-label">ホームページ</span>
-                            <span class="info-value">
-                                <a href="https://enoki.xyz" target="_blank" rel="noopener noreferrer">
-                                    https://enoki.xyz
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-                                </a>
-                            </span>
-                        </div>
-                        <div class="info-block">
-                            <span class="info-label">GitHub</span>
-                            <span class="info-value">
-                                <a href="https://github.com/jikantoki" target="_blank" rel="noopener noreferrer">
-                                    https://github.com/jikantoki
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-                                </a>
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="feature-highlights">
-                        <h4>主な機能と特徴</h4>
-                        <ul>
-                            <li><strong>ワンクリック有線接続</strong>: <code>desktop-head-unit --usb</code> をバックグラウンドで安全に起動</li>
-                            <li><strong>切断時10秒自動復帰</strong>: USBケーブルが抜けてプロセスが落ちても、10秒間自動的に再接続を試行</li>
-                            <li><strong>GUI設定エディタ</strong>: <code>~/.android/headunit.ini</code>（解像度・DPI・タッチ・FPS）を直感的に設定</li>
-                            <li><strong>Zero-Dependency 設計</strong>: Python 3標準ライブラリ100%で動作し、Ubuntuのバージョンアップ等による依存破壊を排除</li>
-                        </ul>
-                    </div>
+                <div class="guide-sub-section">
+                  <h4>2. アイコンを押したときの動作</h4>
+                  <ol>
+                    <li>
+                      サーバーが応答していれば、そのままブラウザ（またはPWA）でこの画面を開きます。
+                    </li>
+                    <li>
+                      サービスが停止していた場合は、<code
+                        >systemctl --user start linux-auto</code
+                      >
+                      で起動してから画面を開きます。
+                    </li>
+                    <li>
+                      サービス未登録の場合のみ、サーバーを一時的にバックグラウンド起動します（ログ:
+                      <code>~/.cache/linux-auto/server.log</code>）。
+                    </li>
+                  </ol>
+                  <div class="callout callout-tip">
+                    <span
+                      >💡
+                      <strong>ブラウザを閉じても接続は切れません。</strong>
+                      Android Auto を終了したいときは、この画面の「切断 /
+                      停止」ボタンを押してください。</span
+                    >
+                  </div>
                 </div>
-            </section>
-        </main>
+
+                <div class="guide-sub-section">
+                  <h4>参考: ターミナルで直接実行する場合</h4>
+                  <p>
+                    デバッグ時などは、サーバーをフォアグラウンドで起動（<code>./start.sh</code>）したり、DHUを直接実行（<code>./connect.sh</code>）したりできます。サービスが動いている間に
+                    <code>./start.sh</code>
+                    を実行すると、二重起動せず画面だけが開きます。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- 4. Aboutページ (開発者・プロジェクト情報) -->
+        <!-- ========================================================= -->
+        <section id="tab-about" class="tab-pane">
+          <header class="pane-header">
+            <h2>About Linux Auto</h2>
+            <p class="subtitle">プロジェクトおよび開発者情報</p>
+          </header>
+
+          <div class="card about-card">
+            <div class="about-hero">
+              <div class="about-logo">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="64"
+                  height="64"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z"
+                  />
+                  <circle cx="7.5" cy="14.5" r="1.5" />
+                  <circle cx="16.5" cy="14.5" r="1.5" />
+                </svg>
+              </div>
+              <div class="about-meta">
+                <h3>Linux Auto</h3>
+                <span class="app-version"
+                  >Version 1.0.0 (Ubuntu & Kubuntu Edition)</span
+                >
+                <p class="about-tagline">
+                  Google DHU（Desktop Head
+                  Unit）だけではコマンドラインでの操作や設定が必要で難易度の高かった
+                  Ubuntu系列OSへのAndroid
+                  Auto接続を、ワンクリック＆GUIでサポートするツールです。
+                </p>
+              </div>
+            </div>
+
+            <div class="about-info-grid">
+              <div class="info-block">
+                <span class="info-label">プロジェクト名</span>
+                <span class="info-value">Linux Auto</span>
+              </div>
+              <div class="info-block">
+                <span class="info-label">開発者</span>
+                <span class="info-value highlight"
+                  >エノキ電気 ENOKI ELECTRONICS</span
+                >
+              </div>
+              <div class="info-block">
+                <span class="info-label">ホームページ</span>
+                <span class="info-value">
+                  <a
+                    href="https://enoki.xyz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    https://enoki.xyz
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="currentColor"
+                    >
+                      <path
+                        d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"
+                      />
+                    </svg>
+                  </a>
+                </span>
+              </div>
+              <div class="info-block">
+                <span class="info-label">GitHub</span>
+                <span class="info-value">
+                  <a
+                    href="https://github.com/jikantoki"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    https://github.com/jikantoki
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="currentColor"
+                    >
+                      <path
+                        d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"
+                      />
+                    </svg>
+                  </a>
+                </span>
+              </div>
+            </div>
+
+            <div class="feature-highlights">
+              <h4>主な機能と特徴</h4>
+              <ul>
+                <li>
+                  <strong>ワンクリック有線接続</strong>:
+                  <code>desktop-head-unit --usb</code>
+                  をバックグラウンドで安全に起動
+                </li>
+                <li>
+                  <strong>切断時10秒自動復帰</strong>:
+                  USBケーブルが抜けてプロセスが落ちても、10秒間自動的に再接続を試行
+                </li>
+                <li>
+                  <strong>GUI設定エディタ</strong>:
+                  <code>~/.android/headunit.ini</code
+                  >（解像度・DPI・タッチ・FPS）を直感的に設定
+                </li>
+                <li>
+                  <strong>Zero-Dependency 設計</strong>: Python
+                  3標準ライブラリ100%で動作し、Ubuntuのバージョンアップ等による依存破壊を排除
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
 
     <!-- 通知トースト -->
     <div id="toast" class="toast"></div>
 
     <script src="js/app.js"></script>
-</body>
+  </body>
 </html>
