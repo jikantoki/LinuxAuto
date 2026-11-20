@@ -872,11 +872,7 @@ class KWinRuleManager:
     RULE_GROUP = "linux-auto-dhu"
     DESCRIPTION = "Linux Auto: Android Auto (DHU) のフォーカス設定"
     DEFAULT_TITLE = "Desktop Head Unit"
-    # WM_CLASS がこれらの場合は他のアプリと区別できないため、タイトルも条件に加える
-    GENERIC_CLASSES = {"", "sdl_app", "main", "python3", "java", "wine"}
-
-    # KWin ルールの値: マッチ方法 (1=完全一致, 2=部分一致) / 適用方法 (2=強制)
-    MATCH_EXACT = 1
+    # KWin ルールの値: マッチ方法 (2=部分一致) / 適用方法 (2=強制)
     MATCH_SUBSTRING = 2
     RULE_FORCE = 2
 
@@ -926,26 +922,26 @@ class KWinRuleManager:
             json.dump(info, f, indent=2, ensure_ascii=False)
 
     def desired_settings(self, info):
-        """登録するルールの内容 (キー: 値)。None のキーはルールから削除します。"""
-        settings = {
+        """
+        登録するルールの内容 (キー: 値)。None のキーはルールから削除します。
+
+        対象の指定はウィンドウタイトルの部分一致で行います。実機 (Kubuntu 26.04 / Plasma 6) で
+        タイトル条件のときは効果があり、WM_CLASS 条件に切り替えた後は効かなくなったため、
+        WM_CLASS 条件は使いません (WM_CLASS はログとファイルに記録するだけです)。
+        DHU のタイトル「Android Auto - Desktop Head Unit」は Linux Auto の画面 (ブラウザ) の
+        タイトルとは重ならないため、タイトルだけで DHU を特定できます。
+        """
+        title = (info.get("title") or "").strip() or self.DEFAULT_TITLE
+        return {
             "Description": self.DESCRIPTION,
             "fsplevel": 0,                     # フォーカス奪取防止: なし
             "fsplevelrule": self.RULE_FORCE,
             "acceptfocus": "true",             # フォーカスを受け付ける: はい
             "acceptfocusrule": self.RULE_FORCE,
+            "title": title,
+            "titlematch": self.MATCH_SUBSTRING,
             "wmclass": None, "wmclassmatch": None, "wmclasscomplete": None,
-            "title": None, "titlematch": None,
         }
-        wm_class = (info.get("wm_class") or "").strip()
-        title = (info.get("title") or "").strip()
-        if wm_class:
-            settings.update({"wmclass": wm_class, "wmclassmatch": self.MATCH_EXACT, "wmclasscomplete": "false"})
-            if wm_class.lower() in self.GENERIC_CLASSES and title:
-                settings.update({"title": title, "titlematch": self.MATCH_SUBSTRING})
-        else:
-            # まだ DHU のウィンドウを確認していない場合はタイトルで指定する
-            settings.update({"title": self.DEFAULT_TITLE, "titlematch": self.MATCH_SUBSTRING})
-        return settings
 
     def ensure_rule(self, info=None):
         """ルールが無い・内容が古い場合に登録 (更新) し、KWin に再読み込みさせます。戻り値: 変更したか。"""
@@ -1248,11 +1244,15 @@ class DHUManager:
         if {k: old.get(k) for k in info} != info:
             KWinRuleManager.save_window_info(info)
 
+        # 【重要】ウィンドウが開いた直後に KWin にウィンドウルールを再読み込みさせる。
+        # 実機では、この再読み込みが起きた接続だけ最初からタッチが反応した。KWin が開いている
+        # DHU のウィンドウにルールを適用し直す際にフォーカスが正しく渡し直されるためと考えられる。
         kwin = KWinRuleManager(env, self.add_log)
         if config.get("kde_focus_rule", True) and kwin.available():
             if kwin.ensure_rule(info):
-                self.add_log(f"[KDE] ウィンドウルールの対象を DHU のウィンドウ (WM_CLASS={wm_class}) に合わせて更新しました。"
-                             "次回の接続から開いた時点で適用されます")
+                self.add_log(f"[KDE] ウィンドウルールの対象をタイトル「{title}」に合わせて更新し、KWin に再適用させました")
+            elif kwin.reconfigure_kwin():
+                self.add_log("[KDE] 開いた DHU のウィンドウに、KWin のウィンドウルールを再適用させました")
 
     def _warn_no_handshake(self, proc, handshake, config):
         """DHU 起動後、スマホからの応答がないまま一定時間経過した場合の案内。"""
