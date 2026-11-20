@@ -33,6 +33,7 @@ import shutil
 import signal
 import socket
 import struct
+import glob
 import argparse
 import threading
 import subprocess
@@ -58,8 +59,13 @@ ADB_FORWARD_LOCAL_PORT = 5277
 RELAY_LOCAL_PORT = 5277
 # Wi-Fi 接続時、DHU 起動からスマホの応答 (ハンドシェイク) を待つ秒数
 HANDSHAKE_TIMEOUT_SEC = 20
-# タッチ補正: ハンドシェイク成功から最大化し直すまでの待ち時間 (映像の表示開始を待つ)
-TOUCH_FIX_DELAY_SEC = 1.5
+# タッチ補正: ハンドシェイク成功から「最大化し直し」を行うタイミング (秒)。
+# 映像の表示開始を待つため少し遅らせ、念のため 2 回実行する
+TOUCH_FIX_DELAYS_SEC = (3.0, 10.0)
+# タッチ補正: ハンドシェイクのログが出ない場合でも、DHU 起動からこの秒数で補正を開始する
+TOUCH_FIX_FALLBACK_SEC = 12.0
+# タッチ補正: 最大化を解除してから再最大化するまでの時間 (DHU がサイズ変更を処理する猶予)
+TOUCH_FIX_UNMAX_SEC = 1.0
 # DHU が出力する色付けエスケープシーケンス (例: \x1b[38;5;34m) を除去する正規表現
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9;]+m")
 
@@ -680,6 +686,45 @@ class TCPRelay:
         self.log("[リレー] 中継を停止しました")
 
 
+def _child_pids(pid):
+    """pid の子孫プロセスの PID 集合 (/proc から取得)。"""
+    children = {}
+    for stat_path in glob.glob("/proc/[0-9]*/stat"):
+        try:
+            with open(stat_path, "r") as f:
+                fields = f.read().rsplit(")", 1)[1].split()
+            children.setdefault(int(fields[1]), []).append(int(stat_path.split("/")[2]))
+        except Exception:
+            continue
+    result, stack = set(), [pid]
+    while stack:
+        for c in children.get(stack.pop(), []):
+            if c not in result:
+                result.add(c)
+                stack.append(c)
+    return result
+
+
+def find_xauthority(env):
+    """
+    X サーバー (XWayland 含む) の認証ファイルを探します。
+    systemd サービスから起動した場合は XAUTHORITY が環境変数に無いことがあるため、
+    KDE (xauth_*) / GNOME (.mutter-Xwaylandauth.*) / 従来の ~/.Xauthority の順で探します。
+    """
+    candidates = []
+    if env.get("XAUTHORITY"):
+        candidates.append(env["XAUTHORITY"])
+    runtime = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    found = glob.glob(os.path.join(runtime, "xauth_*")) + glob.glob(os.path.join(runtime, ".mutter-Xwaylandauth.*"))
+    found.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0, reverse=True)
+    candidates += found
+    candidates.append(str(HOME_DIR / ".Xauthority"))
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return c
+    return None
+
+
 # =============================================================================
 # DHU ウィンドウ操作ヘルパー (Wi-Fi 接続時のタッチ不具合の自動回避)
 # =============================================================================
@@ -809,6 +854,42 @@ class X11WindowHelper:
                 result.append(w)
         return result
 
+    def find_dhu_windows(self, pid):
+        """
+        DHU のウィンドウを探します。
+        1. _NET_WM_PID が DHU のプロセス (またはその子プロセス) と一致するもの
+        2. 見つからなければ、タイトルに "Desktop Head Unit" を含むもの
+           (Linux Auto の画面を開いているブラウザを誤検出しないよう "Linux Auto" を含むものは除外)
+        """
+        pids = {pid} | _child_pids(pid)
+        clients = self._get_property(self.root, "_NET_CLIENT_LIST") or []
+        by_pid, by_title = [], []
+        for w in clients:
+            wpid = self._get_property(w, "_NET_WM_PID")
+            if wpid and wpid[0] in pids:
+                by_pid.append(w)
+                continue
+            title = self.window_title(w)
+            if "Desktop Head Unit" in title and "Linux Auto" not in title:
+                by_title.append(w)
+        return by_pid or by_title
+
+    def activate(self, window):
+        """ウィンドウをアクティブ (フォーカス) にします (_NET_ACTIVE_WINDOW)。"""
+        ev = X11WindowHelper._XEvent()
+        ev.xclient.type = self.CLIENT_MESSAGE
+        ev.xclient.send_event = 1
+        ev.xclient.display = self.dpy
+        ev.xclient.window = window
+        ev.xclient.message_type = self.atom("_NET_ACTIVE_WINDOW")
+        ev.xclient.format = 32
+        ev.xclient.data[0] = 2  # 送信元: ページャー (フォーカス奪取防止の対象外にする)
+        ev.xclient.data[1] = 0  # CurrentTime
+        self.x.XSendEvent(self.dpy, self.root, 0,
+                          self.SUBSTRUCTURE_REDIRECT_MASK | self.SUBSTRUCTURE_NOTIFY_MASK,
+                          ctypes.byref(ev))
+        self.x.XSync(self.dpy, 0)
+
     def window_title(self, window):
         raw = self._get_property(window, "_NET_WM_NAME") or self._get_property(window, "WM_NAME") or b""
         return raw.decode("utf-8", "replace") if isinstance(raw, bytes) else ""
@@ -867,6 +948,9 @@ class DHUManager:
         self.retry_countdown = 0      # 再接続カウントダウン（残り秒数）
         self.monitor_thread = None
         self.relay = None             # 方法1 (リレー経由) 用の TCPRelay
+        self.child_env = None         # DHU に渡した環境変数 (タッチ補正で DISPLAY 等を参照)
+        self._touch_fix_started = None  # タッチ自動補正を開始した DHU プロセス
+        self._touch_fix_lock = threading.Lock()  # 手動ボタンと自動補正が同時に動かないようにする
         self.connection = {}          # 現在の接続方式 (画面表示用)
 
     def add_log(self, message):
@@ -1015,53 +1099,91 @@ class DHUManager:
                 "デスクトップにログインしてから接続してください。"
             )
 
-    def _fix_touch_by_remaximize(self, proc, env):
+    def remaximize_dhu_window(self, reason="手動"):
         """
-        【Wi-Fi 接続時のタッチ不具合の自動回避】
-        接続確立後、DHU のウィンドウが最大化されていれば「最大化解除 → 再最大化」を行い、
+        【Wi-Fi 接続時のタッチ不具合の回避】
+        DHU のウィンドウが最大化されていれば「最大化解除 → (1秒待機) → 再最大化 → アクティブ化」を行い、
         DHU にウィンドウサイズを再計算させてタッチ (クリック) を有効にします。
-        詳細は X11WindowHelper の説明を参照してください。
+        画面の「タッチを再有効化」ボタンと、接続確立後の自動補正の両方から呼ばれます。
+        戻り値: (成功したか, メッセージ)
         """
-        time.sleep(TOUCH_FIX_DELAY_SEC)
+        with self._touch_fix_lock:
+            return self._remaximize_locked(reason)
+
+    def _remaximize_locked(self, reason):
+        with self._lock:
+            proc = self.process
+            env = dict(self.child_env or os.environ)
+        if proc is None or proc.poll() is not None:
+            return False, "DHU が起動していません"
+
         display = env.get("DISPLAY")
         if not display:
-            self.add_log("[タッチ補正] DISPLAY が無いため実行できません (X11 / XWayland 以外の環境)")
-            return
+            msg = "DISPLAY が無いため実行できません (X11 / XWayland 以外の環境)"
+            self.add_log(f"[タッチ補正] {msg}")
+            return False, msg
 
+        xauth = find_xauthority(env)
         try:
-            x11 = X11WindowHelper(display, env.get("XAUTHORITY"))
+            x11 = X11WindowHelper(display, xauth)
         except Exception as e:
-            self.add_log(f"[タッチ補正] X11 に接続できないためスキップします: {e}")
-            return
+            msg = f"X11 ({display}, 認証ファイル: {xauth or 'なし'}) に接続できません: {e}"
+            self.add_log(f"[タッチ補正] {msg}")
+            return False, msg
 
         try:
             windows = []
             for _ in range(20):  # ウィンドウが現れるまで最大 10 秒待つ
                 if proc.poll() is not None or self.user_stopped:
-                    return
-                windows = x11.find_windows_by_pid(proc.pid)
+                    return False, "DHU が終了しました"
+                windows = x11.find_dhu_windows(proc.pid)
                 if windows:
                     break
                 time.sleep(0.5)
             if not windows:
-                self.add_log("[タッチ補正] DHU のウィンドウが見つからないためスキップします")
-                return
+                msg = f"DHU のウィンドウが見つかりません (PID: {proc.pid}, DISPLAY: {display})"
+                self.add_log(f"[タッチ補正] {msg}")
+                return False, msg
 
+            done = []
             for w in windows:
                 title = x11.window_title(w) or hex(w)
                 if not x11.is_maximized(w):
-                    self.add_log(f"[タッチ補正] 「{title}」は最大化されていないため補正不要です")
+                    self.add_log(f"[タッチ補正] ({reason}) 「{title}」は最大化されていないため、アクティブ化のみ行います")
+                    x11.activate(w)
                     continue
                 x11.set_maximized(w, False)
-                time.sleep(0.4)
+                time.sleep(TOUCH_FIX_UNMAX_SEC)
                 x11.set_maximized(w, True)
                 time.sleep(0.3)
+                x11.activate(w)
                 state = "最大化に復帰" if x11.is_maximized(w) else "最大化に戻せませんでした"
-                self.add_log(f"[タッチ補正] 「{title}」の最大化を解除→再最大化しました ({state})")
+                self.add_log(f"[タッチ補正] ({reason}) 「{title}」の最大化を解除→再最大化しました ({state})")
+                done.append(title)
+            return True, ("ウィンドウを最大化し直しました" if done else "最大化されていないため、アクティブ化のみ行いました")
         except Exception as e:
             self.add_log(f"[タッチ補正] 失敗しました: {e}")
+            return False, str(e)
         finally:
             x11.close()
+
+    def _start_auto_touch_fix(self, proc, reason):
+        """接続確立後のタッチ自動補正を (DHU プロセスごとに 1 回だけ) 開始します。"""
+        with self._lock:
+            if self._touch_fix_started is proc:
+                return
+            self._touch_fix_started = proc
+
+        def worker():
+            self.add_log(f"[タッチ補正] {reason}。{'秒後・'.join(str(int(d)) for d in TOUCH_FIX_DELAYS_SEC)}秒後にウィンドウを最大化し直します")
+            base = time.monotonic()
+            for delay in TOUCH_FIX_DELAYS_SEC:
+                time.sleep(max(0.0, base + delay - time.monotonic()))
+                if proc.poll() is not None or self.user_stopped or self.process is not proc:
+                    return
+                self.remaximize_dhu_window(reason=f"自動 {int(delay)}秒後")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _warn_no_handshake(self, proc, handshake, config):
         """DHU 起動後、スマホからの応答がないまま一定時間経過した場合の案内。"""
@@ -1209,6 +1331,8 @@ class DHUManager:
 
         env = build_child_env(dhu_path)
         self._apply_session_env(env)
+        with self._lock:
+            self.child_env = env
         dhu_work_dir = str(Path(dhu_path).resolve().parent)
 
         while not self.user_stopped:
@@ -1260,6 +1384,14 @@ class DHUManager:
                     # ---------------------------------------------------------
                     handshake = {"ok": False}
                     watchdog = None
+                    fallback_fix = None
+                    if not is_usb and config.get("wifi_touch_fix", True):
+                        fallback_fix = threading.Timer(
+                            TOUCH_FIX_FALLBACK_SEC, self._start_auto_touch_fix,
+                            args=(proc, f"起動から{int(TOUCH_FIX_FALLBACK_SEC)}秒経過しました (接続確立のログは未検出)"),
+                        )
+                        fallback_fix.daemon = True
+                        fallback_fix.start()
                     if not is_usb:
                         watchdog = threading.Timer(
                             HANDSHAKE_TIMEOUT_SEC, self._warn_no_handshake, args=(proc, handshake, config)
@@ -1281,14 +1413,12 @@ class DHUManager:
                                     if not is_usb:
                                         self.add_log("[接続] スマホとのハンドシェイクに成功しました")
                                         if config.get("wifi_touch_fix", True):
-                                            threading.Thread(
-                                                target=self._fix_touch_by_remaximize,
-                                                args=(proc, env),
-                                                daemon=True,
-                                            ).start()
+                                            self._start_auto_touch_fix(proc, "接続確立を検知しました")
 
                     if watchdog is not None:
                         watchdog.cancel()
+                    if fallback_fix is not None:
+                        fallback_fix.cancel()
 
                     proc.wait()
                     if proc.stdin is not None:
@@ -1534,6 +1664,12 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
                 "headunit_ini": saved_ini,
                 "app_config": saved_app,
             })
+            return
+
+        # API: タッチの再有効化 (DHU ウィンドウを最大化し直す)
+        if path == "/api/touch-fix":
+            ok, msg = dhu_manager.remaximize_dhu_window(reason="手動")
+            self._send_json(200, {"success": ok, "message": msg})
             return
 
         # API: スマホ (ヘッドユニットサーバー / ADB) への TCP 疎通確認
