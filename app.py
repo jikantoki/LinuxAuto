@@ -315,8 +315,21 @@ class DHUManager:
 
         if proc is not None and proc.poll() is None:
             try:
-                # 穏やかにSIGINT(Ctrl+C相当)を送信し、少し待って終了しなければSIGTERM/KILL
-                proc.send_signal(signal.SIGINT)
+                # まず DHU の対話コンソールに 'quit' を送って正常終了を促す
+                if proc.stdin is not None:
+                    try:
+                        proc.stdin.write("quit\n")
+                        proc.stdin.flush()
+                    except Exception:
+                        pass
+                    for _ in range(10):
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.2)
+
+                # 終了しなければ SIGINT(Ctrl+C相当)、それでもだめなら SIGTERM
+                if proc.poll() is None:
+                    proc.send_signal(signal.SIGINT)
                 for _ in range(10):
                     if proc.poll() is not None:
                         break
@@ -378,8 +391,18 @@ class DHUManager:
             try:
                 dhu_work_dir = str(dhu_file.parent)
 
+                # =============================================================
+                # 【デスクトップ起動時の即時終了対策】
+                # DHU は標準入力を対話コンソール (day / night / quit 等) として読み続けます。
+                # .desktop (Terminal=false) から起動すると stdin が /dev/null になり、
+                # DHU は即座に EOF を受け取って「quit」と同様に exit 0 で終了してしまいます。
+                # そこで、何も書き込まずに開いたままのパイプを stdin として渡し、
+                # ターミナル起動時と同じ「入力待ち」状態を再現します。
+                # (このパイプは停止時に 'quit' コマンドを送る用途にも使います)
+                # =============================================================
                 self.process = subprocess.Popen(
                     cmd,
+                    stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     universal_newlines=True,
@@ -402,6 +425,11 @@ class DHUManager:
                             self.add_log(f"[DHU] {clean_line}")
 
                 self.process.wait()
+                if self.process.stdin is not None:
+                    try:
+                        self.process.stdin.close()
+                    except Exception:
+                        pass
                 exit_code = self.process.returncode
                 elapsed = time.time() - start_time
                 self.add_log(f"[終了] プロセスが終了しました (終了コード: {exit_code}, 稼働時間: {elapsed:.1f}秒)")
