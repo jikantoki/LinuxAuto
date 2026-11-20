@@ -315,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
   })
 
   // =========================================================================
-  // 4.5 接続方式 (USB接続 / Wi-Fi接続 [方法1: ADB / 方法2: 直接])
+  // 4.5 接続方式 (USB接続 / Wi-Fi接続 [方法1: 直接 (既定) / 方法2: ADB])
   // =========================================================================
   const conn = {
     card: document.getElementById('conn-card'),
@@ -402,13 +402,13 @@ document.addEventListener('DOMContentLoaded', () => {
       return { label: 'USB（AOA）', target: 'USB ケーブル' }
     if (f.wifi_mode === 'adb') {
       return {
-        label: 'Wi-Fi 方法1（ADB）',
+        label: 'Wi-Fi 方法2（ADB）',
         target: `${phoneIpLabel()} : ${f.adb_port}`,
       }
     }
     const via = f.direct_transport === 'relay' ? '（内蔵リレー）' : ''
     return {
-      label: `Wi-Fi 方法2（直接）${via}`,
+      label: `Wi-Fi 方法1（直接）${via}`,
       target: `${phoneIpLabel()} : ${f.hu_port}`,
     }
   }
@@ -495,8 +495,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const f = getConnectionForm()
     const method =
       f.wifi_mode === 'adb'
-        ? '方法1（ADB）'
-        : '方法2（ヘッドユニットサーバーへ直接）'
+        ? '方法2（ADB）'
+        : '方法1（ヘッドユニットサーバーへ直接）'
     return `Wi-Fi ${method} で接続します。スマホで「ヘッドユニットサーバーを起動」してから「接続開始」を押してください。`
   }
 
@@ -578,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .getElementById('btn-net-refresh')
     .addEventListener('click', refreshNetwork)
 
-  // ---- 方法1: ADB 操作 ----
+  // ---- 方法2: ADB 操作 ----
   function renderDevices(devices) {
     if (!devices || devices.length === 0) {
       conn.deviceList.innerHTML =
@@ -659,7 +659,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .getElementById('btn-adb-devices')
     .addEventListener('click', refreshDevices)
 
-  // ---- 方法2: ヘッドユニットサーバー疎通確認 ----
+  // ---- 方法1: ヘッドユニットサーバー疎通確認 ----
   document.getElementById('btn-probe').addEventListener('click', async (e) => {
     const btn = e.currentTarget
     const f = getConnectionForm()

@@ -50,9 +50,9 @@ HOST = "127.0.0.1"
 
 # Android Auto ヘッドユニットサーバー (スマホ側) の標準ポート
 HU_SERVER_PORT = 5277
-# 方法1 (adb forward) で PC 側に開くポート。DHU は引数なしだと localhost:5277 に接続する
+# 方法2 (adb forward) で PC 側に開くポート。DHU は引数なしだと localhost:5277 に接続する
 ADB_FORWARD_LOCAL_PORT = 5277
-# 方法2 (内蔵リレー経由) で PC 側に開くポート
+# 方法1 (内蔵リレー経由) で PC 側に開くポート
 RELAY_LOCAL_PORT = 5277
 # Wi-Fi 接続時、DHU 起動からスマホの応答 (ハンドシェイク) を待つ秒数
 HANDSHAKE_TIMEOUT_SEC = 20
@@ -135,12 +135,12 @@ class ConfigManager:
             "retry_seconds": 10,
             # ---- 接続方式 ----
             "connection_type": "usb",        # "usb" | "wifi"
-            "wifi_mode": "direct",           # "adb" (方法1) | "direct" (方法2)
+            "wifi_mode": "direct",           # "direct" (方法1・既定) | "adb" (方法2)
             "phone_ip_auto": True,           # True: テザリング親機 (デフォルトゲートウェイ) を自動検出
             "phone_ip": "",                  # 手動指定時のスマホ IP
-            "adb_port": 5555,                # 方法1: adb connect 先のポート
+            "adb_port": 5555,                # 方法2: adb connect 先のポート
             "hu_port": HU_SERVER_PORT,       # ヘッドユニットサーバーのポート
-            "direct_transport": "adb_flag",  # 方法2: "adb_flag" (--adb=IP:5277) | "relay" (内蔵リレー)
+            "direct_transport": "adb_flag",  # 方法1: "adb_flag" (--adb=IP:5277) | "relay" (内蔵リレー)
         }
 
         if not APP_CONFIG_PATH.exists():
@@ -505,7 +505,7 @@ class NetworkHelper:
 
 
 # =============================================================================
-# ADB 操作ヘルパー (方法1: Wi-Fi ADB + ポートフォワーディング)
+# ADB 操作ヘルパー (方法2: Wi-Fi ADB + ポートフォワーディング)
 # =============================================================================
 class ADBHelper:
     """adb コマンドのラッパーです。PATH は build_child_env() で補完したものを使います。"""
@@ -583,7 +583,7 @@ class ADBHelper:
 
 
 # =============================================================================
-# 内蔵 TCP リレー (方法2 の予備経路 / socat 相当)
+# 内蔵 TCP リレー (方法1 の予備経路 / socat 相当)
 # =============================================================================
 class TCPRelay:
     """
@@ -685,8 +685,8 @@ class DHUManager:
 
     【接続方式】
     - USB             : desktop-head-unit --usb (AOA アクセサリモード)
-    - Wi-Fi / 方法1   : adb connect <スマホIP>:<ADBポート> → adb forward tcp:5277 tcp:5277 → desktop-head-unit
-    - Wi-Fi / 方法2   : desktop-head-unit --adb=<スマホIP>:5277 (ヘッドユニットサーバーへ直接 TCP 接続)
+    - Wi-Fi / 方法1   : desktop-head-unit --adb=<スマホIP>:5277 (ヘッドユニットサーバーへ直接 TCP 接続・既定)
+    - Wi-Fi / 方法2   : adb connect <スマホIP>:<ADBポート> → adb forward tcp:5277 tcp:5277 → desktop-head-unit
                         ※ 予備として内蔵リレー (socat 相当) 経由も選択可能
 
     【Node.jsとの比較】
@@ -704,7 +704,7 @@ class DHUManager:
         self.max_logs = 200
         self.retry_countdown = 0      # 再接続カウントダウン（残り秒数）
         self.monitor_thread = None
-        self.relay = None             # 方法2 (リレー経由) 用の TCPRelay
+        self.relay = None             # 方法1 (リレー経由) 用の TCPRelay
         self.connection = {}          # 現在の接続方式 (画面表示用)
 
     def add_log(self, message):
@@ -863,7 +863,7 @@ class DHUManager:
         else:
             msg = ("スマホから応答がありません (Waiting for phone...)。TCP 接続はできていますが、ヘッドユニットサーバーが"
                    "応答していません。スマホのロック解除・確認画面の許可を行い、ヘッドユニットサーバーを停止→起動し直してください。"
-                   "それでも進まない場合、この端末では Wi-Fi 直結が使えない可能性があるため、方法1 (ADB) をお試しください。")
+                   "それでも進まない場合、この端末では Wi-Fi 直結が使えない可能性があるため、方法2 (ADB) をお試しください。")
         self.add_log(f"[警告] {msg}")
         with self._lock:
             self.connection["warning"] = msg
@@ -901,7 +901,7 @@ class DHUManager:
         return self._prepare_wifi_direct(dhu_path, config, env, host, hu_port)
 
     def _prepare_wifi_adb(self, dhu_path, config, env, host, hu_port):
-        """方法1: Wi-Fi ADB 接続 + adb forward tcp:5277 tcp:5277"""
+        """方法2: Wi-Fi ADB 接続 + adb forward tcp:5277 tcp:5277"""
         adb = ADBHelper(env)
         if not adb.path:
             return None, "adb が見つかりません。Android SDK の platform-tools をインストールしてください。"
@@ -940,7 +940,7 @@ class DHUManager:
         with self._lock:
             self.connection = {
                 "type": "wifi", "wifi_mode": "adb",
-                "label": "Wi-Fi 方法1 (ADB + ポートフォワード)",
+                "label": "Wi-Fi 方法2 (ADB + ポートフォワード)",
                 "target": f"{serial} → localhost:{ADB_FORWARD_LOCAL_PORT}",
             }
         # DHU の既定動作 (引数なし) は localhost:5277 への接続
@@ -948,7 +948,7 @@ class DHUManager:
 
     def _prepare_wifi_direct(self, dhu_path, config, env, host, hu_port):
         """
-        方法2: ヘッドユニットサーバー (スマホ:5277) へ直接接続
+        方法1: ヘッドユニットサーバー (スマホ:5277) へ直接接続
 
         ※ 接続直前の自動疎通確認 (TCP 接続して即切断) は行いません。
            ヘッドユニットサーバーは 1 本の接続を 1 セッションとして扱うため、確認用の接続が
@@ -972,7 +972,7 @@ class DHUManager:
             with self._lock:
                 self.connection = {
                     "type": "wifi", "wifi_mode": "direct",
-                    "label": "Wi-Fi 方法2 (内蔵リレー経由)",
+                    "label": "Wi-Fi 方法1 (内蔵リレー経由)",
                     "target": f"localhost:{RELAY_LOCAL_PORT} → {host}:{hu_port}",
                 }
             return [dhu_path], None
@@ -980,7 +980,7 @@ class DHUManager:
         with self._lock:
             self.connection = {
                 "type": "wifi", "wifi_mode": "direct",
-                "label": "Wi-Fi 方法2 (ヘッドユニットサーバーへ直接)",
+                "label": "Wi-Fi 方法1 (ヘッドユニットサーバーへ直接)",
                 "target": f"{host}:{hu_port}",
             }
         return [dhu_path, f"--adb={host}:{hu_port}"], None
@@ -1157,7 +1157,7 @@ class DHUManager:
 
         self._stop_relay()
         if not is_usb and config.get("wifi_mode") == "adb":
-            # 方法1 で設定した adb forward を後片付け (他の方式でポートが衝突しないように)
+            # 方法2 で設定した adb forward を後片付け (他の方式でポートが衝突しないように)
             ADBHelper(env).remove_forward(ADB_FORWARD_LOCAL_PORT)
         with self._lock:
             if self.status != "ERROR":
@@ -1334,7 +1334,7 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
             self._send_json(200, {"ok": ok, "host": host, "port": port, "message": msg})
             return
 
-        # API: adb 操作 (方法1 の事前準備)
+        # API: adb 操作 (方法2 の事前準備)
         if path in ("/api/adb/connect", "/api/adb/pair", "/api/adb/tcpip"):
             payload = self._read_json_body()
             app_config = ConfigManager.load_app_config()

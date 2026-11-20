@@ -193,17 +193,17 @@
                 <label>接続モード</label>
                 <div class="radio-pill-group">
                   <label class="radio-pill">
-                    <input type="radio" name="wifi-mode" value="adb" />
-                    <span>方法1: ADB 経由</span>
-                  </label>
-                  <label class="radio-pill">
                     <input
                       type="radio"
                       name="wifi-mode"
                       value="direct"
                       checked
                     />
-                    <span>方法2: 直接接続</span>
+                    <span>方法1: 直接接続</span>
+                  </label>
+                  <label class="radio-pill">
+                    <input type="radio" name="wifi-mode" value="adb" />
+                    <span>方法2: ADB 経由</span>
                   </label>
                 </div>
                 <p class="help-text" id="wifi-mode-desc"></p>
@@ -295,8 +295,64 @@
                 </div>
 
                 <!-- 方法1 の詳細設定 -->
+                <div class="mode-detail" id="detail-direct">
+                  <h4 class="advanced-heading">方法1（直接接続）の設定</h4>
+                  <div class="form-group">
+                    <label for="input-hu-port"
+                      >ヘッドユニットサーバーのポート</label
+                    >
+                    <input
+                      type="number"
+                      class="form-input number-input"
+                      id="input-hu-port"
+                      min="1"
+                      max="65535"
+                      value="5277"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>接続経路</label>
+                    <div class="radio-pill-group">
+                      <label class="radio-pill">
+                        <input
+                          type="radio"
+                          name="direct-transport"
+                          value="adb_flag"
+                          checked
+                        />
+                        <span>DHU から直接（--adb=IP:ポート）</span>
+                      </label>
+                      <label class="radio-pill">
+                        <input
+                          type="radio"
+                          name="direct-transport"
+                          value="relay"
+                        />
+                        <span>内蔵リレー経由（socat 相当）</span>
+                      </label>
+                    </div>
+                    <p class="help-text">
+                      通常は「DHU
+                      から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
+                      <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code>
+                      と同じ中継を Linux Auto 自身が行います（socat
+                      のインストールは不要）。
+                    </p>
+                  </div>
+                  <div class="mode-actions">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      id="btn-probe"
+                    >
+                      ヘッドユニットサーバーの疎通確認
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 方法2 の詳細設定 -->
                 <div class="mode-detail" id="detail-adb">
-                  <h4 class="advanced-heading">方法1（ADB）の設定</h4>
+                  <h4 class="advanced-heading">方法2（ADB）の設定</h4>
                   <div class="form-group">
                     <label for="input-adb-port">ADB 接続ポート</label>
                     <input
@@ -379,62 +435,6 @@
                     </div>
                   </details>
                   <div class="adb-device-list" id="adb-device-list"></div>
-                </div>
-
-                <!-- 方法2 の詳細設定 -->
-                <div class="mode-detail" id="detail-direct">
-                  <h4 class="advanced-heading">方法2（直接接続）の設定</h4>
-                  <div class="form-group">
-                    <label for="input-hu-port"
-                      >ヘッドユニットサーバーのポート</label
-                    >
-                    <input
-                      type="number"
-                      class="form-input number-input"
-                      id="input-hu-port"
-                      min="1"
-                      max="65535"
-                      value="5277"
-                    />
-                  </div>
-                  <div class="form-group">
-                    <label>接続経路</label>
-                    <div class="radio-pill-group">
-                      <label class="radio-pill">
-                        <input
-                          type="radio"
-                          name="direct-transport"
-                          value="adb_flag"
-                          checked
-                        />
-                        <span>DHU から直接（--adb=IP:ポート）</span>
-                      </label>
-                      <label class="radio-pill">
-                        <input
-                          type="radio"
-                          name="direct-transport"
-                          value="relay"
-                        />
-                        <span>内蔵リレー経由（socat 相当）</span>
-                      </label>
-                    </div>
-                    <p class="help-text">
-                      通常は「DHU
-                      から直接」で接続できます。つながらない場合は「内蔵リレー経由」を選ぶと、
-                      <code>socat TCP-LISTEN:5277,fork TCP:スマホIP:5277</code>
-                      と同じ中継を Linux Auto 自身が行います（socat
-                      のインストールは不要）。
-                    </p>
-                  </div>
-                  <div class="mode-actions">
-                    <button
-                      type="button"
-                      class="btn btn-secondary btn-sm"
-                      id="btn-probe"
-                    >
-                      ヘッドユニットサーバーの疎通確認
-                    </button>
-                  </div>
                 </div>
 
                 <div class="wifi-result" id="wifi-action-result"></div>
@@ -1003,11 +1003,11 @@ chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre
                   Linux 端末をスマホのテザリング（Wi-Fi
                   アクセスポイント）に接続して、ケーブルなしで Android Auto
                   を使う手順です。 メイン画面で「Wi-Fi接続」を選び、<strong
-                    >方法1（ADB）</strong
+                    >方法1（ヘッドユニットサーバーへ直接・既定）</strong
                   >
                   か
-                  <strong>方法2（ヘッドユニットサーバーへ直接）</strong>
-                  を選択します。
+                  <strong>方法2（ADB）</strong>
+                  を選択します。通常は方法1のままで OK です。
                 </p>
                 <div class="callout callout-info">
                   <span
@@ -1060,6 +1060,59 @@ chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit</pre
                 <div class="guide-sub-section">
                   <h4>
                     方法1:
+                    ヘッドユニットサーバーへ直接接続（おすすめ・追加機材なし）
+                  </h4>
+                  <ol>
+                    <li>
+                      共通手順でヘッドユニットサーバーを起動します（ADB や USB
+                      デバッグは不要です）。
+                    </li>
+                    <li>
+                      メイン画面で「方法1」を選び、「接続開始」を押します（つながらない場合のみ
+                      <strong>「ヘッドユニットサーバーの疎通確認」</strong>
+                      で原因を確認します。疎通確認は接続を1回使うため、確認後はスマホでヘッドユニットサーバーを停止→起動し直してから接続してください）。
+                    </li>
+                    <li>
+                      DHU が
+                      <code>--adb=&lt;スマホIP&gt;:5277</code>
+                      でスマホへ直接接続します。スマホのロックを解除し、Android
+                      Auto の確認画面が出たら許可してください。
+                    </li>
+                  </ol>
+                  <p class="help-text">手動で行う場合のコマンド：</p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+./desktop-head-unit --adb=&lt;スマホIP&gt;:5277</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy="./desktop-head-unit --adb=&lt;スマホIP&gt;:5277"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    ※ DHU から直接つながらない場合は、接続経路を
+                    <strong>「内蔵リレー経由」</strong> に切り替えてください。
+                    <code
+                      >socat TCP-LISTEN:5277,fork
+                      TCP:&lt;スマホIP&gt;:5277</code
+                    >
+                    と同じ中継を Linux Auto が行うため、socat
+                    のインストールは不要です。<br />
+                    ※
+                    疎通確認で「接続を拒否しました」となる場合、ヘッドユニットサーバーが起動していないか、お使いの端末・Android
+                    Auto のバージョンでは Wi-Fi
+                    側からの接続を受け付けていない可能性があります。その場合は方法2をご利用ください。<br />
+                    ※ 接続はできても DHU が「Waiting for
+                    phone...」のまま進まない場合（約20秒で画面に警告が出ます）は、
+                    スマホでヘッドユニットサーバーを停止→起動し直してください。それでも進まない端末では方法2をご利用ください。
+                  </p>
+                </div>
+
+                <div class="guide-sub-section">
+                  <h4>
+                    方法2:
                     ADB（Wi-Fiデバッグ）＋ポートフォワーディング（開発・テスト向け）
                   </h4>
                   <p>adb が必要です。未導入の場合はインストールします：</p>
@@ -1150,59 +1203,6 @@ adb forward tcp:5277 tcp:5277
                     ※
                     テザリングの親機になっているスマホでは、機種によってワイヤレスデバッグを
                     ON にできません。その場合は A の方式を使用してください。
-                  </p>
-                </div>
-
-                <div class="guide-sub-section">
-                  <h4>
-                    方法2:
-                    ヘッドユニットサーバーへ直接接続（おすすめ・追加機材なし）
-                  </h4>
-                  <ol>
-                    <li>
-                      共通手順でヘッドユニットサーバーを起動します（ADB や USB
-                      デバッグは不要です）。
-                    </li>
-                    <li>
-                      メイン画面で「方法2」を選び、「接続開始」を押します（つながらない場合のみ
-                      <strong>「ヘッドユニットサーバーの疎通確認」</strong>
-                      で原因を確認します。疎通確認は接続を1回使うため、確認後はスマホでヘッドユニットサーバーを停止→起動し直してから接続してください）。
-                    </li>
-                    <li>
-                      DHU が
-                      <code>--adb=&lt;スマホIP&gt;:5277</code>
-                      でスマホへ直接接続します。スマホのロックを解除し、Android
-                      Auto の確認画面が出たら許可してください。
-                    </li>
-                  </ol>
-                  <p class="help-text">手動で行う場合のコマンド：</p>
-                  <div class="code-block-wrapper">
-                    <pre class="code-block">
-./desktop-head-unit --adb=&lt;スマホIP&gt;:5277</pre
-                    >
-                    <button
-                      class="btn-copy"
-                      data-copy="./desktop-head-unit --adb=&lt;スマホIP&gt;:5277"
-                    >
-                      コピー
-                    </button>
-                  </div>
-                  <p class="help-text">
-                    ※ DHU から直接つながらない場合は、接続経路を
-                    <strong>「内蔵リレー経由」</strong> に切り替えてください。
-                    <code
-                      >socat TCP-LISTEN:5277,fork
-                      TCP:&lt;スマホIP&gt;:5277</code
-                    >
-                    と同じ中継を Linux Auto が行うため、socat
-                    のインストールは不要です。<br />
-                    ※
-                    疎通確認で「接続を拒否しました」となる場合、ヘッドユニットサーバーが起動していないか、お使いの端末・Android
-                    Auto のバージョンでは Wi-Fi
-                    側からの接続を受け付けていない可能性があります。その場合は方法1をご利用ください。<br />
-                    ※ 接続はできても DHU が「Waiting for
-                    phone...」のまま進まない場合（約20秒で画面に警告が出ます）は、
-                    スマホでヘッドユニットサーバーを停止→起動し直してください。それでも進まない端末では方法1をご利用ください。
                   </p>
                 </div>
               </div>
