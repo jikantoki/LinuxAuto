@@ -614,6 +614,17 @@
                 （前提: Android SDK の
                 <code>extras;google;auto</code> がインストール済み）
               </p>
+              <p class="help-text">
+                まだインストールしていない場合は、導入ガイドの「自動セットアップ」で
+                SDK の取得からパスの設定・headunit.ini の書き込みまで自動で行えます。
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  id="btn-goto-sdk-setup"
+                >
+                  自動セットアップを開く
+                </button>
+              </p>
 
               <div class="form-group">
                 <label for="input-dhu-path">desktop-head-unit のパス</label>
@@ -825,13 +836,127 @@
                   Linux Auto を動かすには、Google公式の
                   <code>desktop-head-unit</code> バイナリ（パッケージ名:
                   <code>extras;google;auto</code>）が必要です。
-                  以下のいずれかの方法でインストールしてください。
+                  下の「自動セットアップ」を使うか、方法A / 方法B
+                  のいずれかで手動インストールしてください。
                 </p>
+
+                <!-- 自動セットアップ (setup-sdk.py を画面から実行) -->
+                <div class="guide-sub-section" id="sdk-setup">
+                  <h4>かんたん: 自動セットアップ（いちばんおすすめ）</h4>
+                  <p>
+                    ボタンを押すだけで、次の作業をまとめて行います（数分かかります）。
+                  </p>
+                  <ol>
+                    <li>
+                      Java 17 以降（sdkmanager の実行に必要）が無ければ自動でインストール
+                    </li>
+                    <li>
+                      最新版の Android SDK Command-line Tools を
+                      <code>repository2-1.xml</code> で調べてダウンロード
+                    </li>
+                    <li>
+                      <code>extras;google;auto</code>（DHU）と
+                      <code>platform-tools</code>（adb）をインストール
+                    </li>
+                    <li>
+                      DHU に実行権限を付与し、必要なライブラリ（libc++
+                      など）が無ければ自動でインストール
+                    </li>
+                    <li>
+                      設定画面の「desktop-head-unit のパス」を保存し、
+                      <code>~/.android/headunit.ini</code> を書き込み
+                    </li>
+                  </ol>
+                  <div class="callout callout-info">
+                    <span
+                      >ℹ️ <strong>足りないパッケージがある場合は、デスクトップにパスワード入力のダイアログが表示されます。</strong>
+                      Java や DHU に必要なライブラリ（libc++）のインストールには管理者権限が必要なためです。ログインに使うパスワードを入力してください。
+                      ダイアログが表示されない環境では、ログに表示されるコマンドをターミナルで実行してから、もう一度実行してください。</span
+                    >
+                  </div>
+
+                  <div class="sdk-setup-options">
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="sdk-opt-install-deps" checked />
+                      <span
+                        >足りないパッケージ（Java / libc++ など）を自動でインストールする</span
+                      >
+                    </label>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="sdk-opt-platform-tools" checked />
+                      <span>platform-tools（adb）もインストールする</span>
+                    </label>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="sdk-opt-reinstall" />
+                      <span>Command-line Tools を最新版で入れ直す</span>
+                    </label>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="sdk-opt-reset-ini" />
+                      <span
+                        >headunit.ini を既定値に戻す（通常は今の設定を引き継ぎます）</span
+                      >
+                    </label>
+                    <label class="checkbox-inline">
+                      <input type="checkbox" id="sdk-opt-accept" />
+                      <span
+                        ><a
+                          href="https://developer.android.com/studio/terms"
+                          target="_blank"
+                          rel="noopener"
+                          >Android SDK のライセンス</a
+                        >に同意する（必須）</span
+                      >
+                    </label>
+                  </div>
+
+                  <div class="sdk-setup-actions">
+                    <button
+                      type="button"
+                      class="btn btn-primary"
+                      id="btn-sdk-setup"
+                      disabled
+                    >
+                      自動セットアップを実行
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary"
+                      id="btn-sdk-setup-cancel"
+                      hidden
+                    >
+                      中止
+                    </button>
+                    <span class="badge badge-info" id="sdk-setup-status" hidden></span>
+                  </div>
+                  <div class="log-console sdk-setup-log" id="sdk-setup-log" hidden></div>
+
+                  <p>コマンドラインから実行する場合（画面のボタンと同じ処理です）：</p>
+                  <div class="code-block-wrapper">
+                    <pre class="code-block">
+cd ~/LinuxAuto
+python3 setup-sdk.py --yes</pre
+                    >
+                    <button
+                      class="btn-copy"
+                      data-copy="cd ~/LinuxAuto &amp;&amp; python3 setup-sdk.py --yes"
+                    >
+                      コピー
+                    </button>
+                  </div>
+                  <p class="help-text">
+                    主なオプション:
+                    <code>--no-install-deps</code>（足りないパッケージを自動でインストールしない）、<code>--no-platform-tools</code>、<code>--reinstall</code>、<code>--reset-ini</code>、<code>--sdk-root パス</code>。
+                    足りないパッケージのインストール時は sudo のパスワードを入力します。
+                    <code>--yes</code> を付けない場合は、ライセンスを画面で確認して
+                    <code>y</code> を入力します。一覧は
+                    <code>python3 setup-sdk.py --help</code> で確認できます。
+                  </p>
+                </div>
 
                 <!-- パターンA: ターミナルでサクッと導入 -->
                 <div class="guide-sub-section">
                   <h4>
-                    方法A: ターミナルから導入（おすすめ・Android Studio不要）
+                    方法A: ターミナルから手動で導入（Android Studio不要）
                   </h4>
                   <p>
                     巨大な Android Studio
@@ -854,22 +979,56 @@ sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget</pre
                       </div>
                     </li>
                     <li>
-                      Android
-                      SDKディレクトリを作成し、公式コマンドラインツールを配置します：
+                      最新版のコマンドラインツール（Android SDK Command-line Tools）のファイル名を調べます：
+                      <p>
+                        ZIP のファイル名（<code>commandlinetools-linux-&lt;ビルド番号&gt;_latest.zip</code>）はバージョンごとに変わるため、
+                        Google が公開している SDK のパッケージ一覧
+                        <code>https://dl.google.com/android/repository/repository2-1.xml</code>
+                        から、最新版（<code>cmdline-tools;latest</code>）の Linux 用ファイル名を取り出します。
+                      </p>
                       <div class="code-block-wrapper">
                         <pre class="code-block">
-mkdir -p ~/Android/Sdk/cmdline-tools
-cd ~/Android/Sdk/cmdline-tools
-wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip</pre
+CMDLINE_ZIP=$(wget -qO- https://dl.google.com/android/repository/repository2-1.xml \
+  | sed -n '/&lt;remotePackage path="cmdline-tools;latest"&gt;/,/&lt;\/remotePackage&gt;/p' \
+  | grep -o 'commandlinetools-linux-[0-9]*_latest\.zip' | head -n 1)
+echo "$CMDLINE_ZIP"</pre
                         >
                         <button
                           class="btn-copy"
-                          data-copy="mkdir -p ~/Android/Sdk/cmdline-tools &amp;&amp; cd ~/Android/Sdk/cmdline-tools &amp;&amp; wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip &amp;&amp; unzip cmdline-tools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdline-tools.zip"
+                          data-copy="CMDLINE_ZIP=$(wget -qO- https://dl.google.com/android/repository/repository2-1.xml | sed -n &#x27;/&lt;remotePackage path=&quot;cmdline-tools;latest&quot;&gt;/,/&lt;\/remotePackage&gt;/p&#x27; | grep -o &#x27;commandlinetools-linux-[0-9]*_latest\.zip&#x27; | head -n 1) &amp;&amp; echo &quot;$CMDLINE_ZIP&quot;"
                         >
                           コピー
                         </button>
                       </div>
+                      <p>
+                        <code>commandlinetools-linux-16111833_latest.zip</code>
+                        のように表示されれば成功です（数字は最新版に合わせて変わります）。何も表示されない場合はネットワーク接続を確認してください。
+                      </p>
+                    </li>
+                    <li>
+                      Android
+                      SDKディレクトリを作成し、手順2で調べたファイルを
+                      <code>https://dl.google.com/android/repository/</code>
+                      からダウンロードして配置します（<strong>手順2と同じターミナルで続けて実行</strong>してください）：
+                      <div class="code-block-wrapper">
+                        <pre class="code-block">
+mkdir -p ~/Android/Sdk/cmdline-tools
+cd ~/Android/Sdk/cmdline-tools
+wget "https://dl.google.com/android/repository/${CMDLINE_ZIP}" -O cmdline-tools.zip
+unzip cmdline-tools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdline-tools.zip</pre
+                        >
+                        <button
+                          class="btn-copy"
+                          data-copy="mkdir -p ~/Android/Sdk/cmdline-tools &amp;&amp; cd ~/Android/Sdk/cmdline-tools &amp;&amp; wget &quot;https://dl.google.com/android/repository/${CMDLINE_ZIP}&quot; -O cmdline-tools.zip &amp;&amp; unzip cmdline-tools.zip &amp;&amp; mv cmdline-tools latest &amp;&amp; rm cmdline-tools.zip"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                      <p>
+                        展開したフォルダは必ず <code>~/Android/Sdk/cmdline-tools/latest/</code>
+                        という構成にしてください（<code>mv cmdline-tools latest</code> の部分）。この構成でないと
+                        <code>sdkmanager</code> が動きません。
+                      </p>
                     </li>
                     <li>
                       <code>extras;google;auto</code

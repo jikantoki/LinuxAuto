@@ -37,23 +37,155 @@
 - Kubuntu 20.04 以降（KDE Plasma環境）
 - その他 Debian/Ubuntu 系列の Linux ディストリビューション
 
-### 事前準備 (Linux側)
+### 事前準備 (Linux側) - Android SDK と DHU の導入
 
-1. **Android SDK & DHU のインストール**:
-   `Android-sdk` の `extras;google;auto` がインストールされている必要があります。
+Linux Auto を動かすには、Google 公式の `desktop-head-unit`（DHU）バイナリが必要です。DHU は Android SDK のパッケージ `extras;google;auto` として配布されているため、まず Android SDK を導入します。
+いちばん簡単なのは **自動セットアップ**（`setup-sdk.py`）です。手動で行う場合は **方法A（ターミナル）** か **方法B（Android Studio）** のどちらか一方を行ってください。アプリ内の「導入ガイド」ページにも同じ手順をコピーボタン付きで掲載しています。
+
+#### かんたん: 自動セットアップ（いちばんおすすめ）
+
+`setup-sdk.py` が、次の作業をまとめて自動で行います。**画面からでもコマンドラインからでも実行できます**（中身は同じ処理です）。
+
+1. Java 17 以降があるか確認し、無ければ自動でインストール（sdkmanager の実行に必要）
+2. 最新版の Android SDK Command-line Tools のファイル名を `repository2-1.xml` から取得（方法A の手順2と同じ）
+3. ZIP をダウンロードし、チェックサム（SHA-1）を確認して `~/Android/Sdk/cmdline-tools/latest/` に配置
+4. `sdkmanager` で `extras;google;auto`（DHU）と `platform-tools`（adb）をインストール
+5. `desktop-head-unit` に実行権限を付与し、DHU の実行に必要なライブラリ（`libc++` など）が無ければ自動でインストール
+6. Linux Auto の設定（`~/.config/linux-auto/config.json`）に DHU のパスを保存し、`~/.android/headunit.ini` を書き込む（既存の値は引き継ぎます）
+
+Python 3 の標準ライブラリだけで動作するため、`wget` や `unzip` は不要です。インストール済みの部分は省略されるため、何度実行しても問題ありません。
+
+**画面から実行する場合**: 導入ガイドの「自動セットアップ」で、ライセンスへの同意にチェックを入れて「自動セットアップを実行」を押します。進捗はその下のログに表示され、完了すると設定画面の DHU のパスが自動で更新されます（設定画面の「自動セットアップを開く」ボタンからも移動できます）。足りないパッケージがある場合は、デスクトップにパスワード入力のダイアログ（PolicyKit / `pkexec`）が表示されるので、ログインに使うパスワードを入力してください。
+
+**コマンドラインから実行する場合**:
+
+```bash
+cd ~/LinuxAuto
+python3 setup-sdk.py --yes
+```
+
+| オプション | 内容 |
+| :--- | :--- |
+| `--yes`, `-y` | Android SDK のライセンスに自動で同意する（付けない場合は sdkmanager が表示するライセンスを確認して `y` を入力） |
+| `--no-install-deps` | Java 17 以降や DHU に必要なライブラリ（`libc++1` / `libc++abi1` など）が足りなくても自動でインストールしない（必要なコマンドを表示するだけ） |
+| `--no-platform-tools` | platform-tools（adb）をインストールしない |
+| `--reinstall` | インストール済みでも Command-line Tools を最新版でダウンロードし直す |
+| `--reset-ini` | `headunit.ini` を既定値で上書きする |
+| `--sdk-root <パス>` | Android SDK のインストール先（既定: `$ANDROID_HOME` → `~/Android/Sdk`） |
+
+> **足りないパッケージの自動インストールについて**: Java（`openjdk-21-jdk-headless` または `openjdk-17-jdk-headless`）や DHU に必要なライブラリ（Ubuntu の標準状態では `libc++1` / `libc++abi1` が入っていないことが多い）は、`apt` で自動インストールします。管理者権限が必要なため、次の方法で実行します。
+>
+> - ターミナルから実行: `sudo`（パスワードをターミナルで入力）
+> - 画面から実行: パスワード不要の `sudo` が使えればそれを、使えなければ `pkexec`（デスクトップにパスワード入力のダイアログを表示）
+>
+> ダイアログを閉じた場合や表示できない環境では、ログに表示されるコマンド（例: `sudo apt update && sudo apt install -y libc++1 libc++abi1`）をターミナルで実行してから、もう一度実行してください。
+
+#### 方法A: ターミナルから手動で導入（Android Studio 不要）
+
+巨大な Android Studio を入れずに、公式のコマンドラインツール（cmdline-tools）だけでインストールする手順です。
+
+1. **Java と解凍ツールをインストールします**（`sdkmanager` の実行に Java 17 以降が必要です）：
 
    ```bash
-   # sdkmanager コマンドの例
-   sdkmanager "extras;google;auto"
+   sudo apt update && sudo apt install -y openjdk-17-jdk-headless unzip wget
    ```
 
-   インストール後、通常以下のパスに実行ファイルが生成されます：
-   `~/Android/Sdk/extras/google/auto/desktop-head-unit`
+2. **最新版のコマンドラインツール（Android SDK Command-line Tools）のファイル名を調べます**：
 
-2. **実行権限の確認**:
+   コマンドラインツールの ZIP はバージョンごとにファイル名（`commandlinetools-linux-<ビルド番号>_latest.zip`）が変わります。最新版のファイル名は、Google が公開している SDK のパッケージ一覧 [`repository2-1.xml`](https://dl.google.com/android/repository/repository2-1.xml) から取得できます。
+
+   ```bash
+   CMDLINE_ZIP=$(wget -qO- https://dl.google.com/android/repository/repository2-1.xml \
+     | sed -n '/<remotePackage path="cmdline-tools;latest">/,/<\/remotePackage>/p' \
+     | grep -o 'commandlinetools-linux-[0-9]*_latest\.zip' | head -n 1)
+   echo "$CMDLINE_ZIP"
+   ```
+
+   このコマンドは次の処理をしています。
+
+   1. `repository2-1.xml` を取得する
+   2. その中から、最新版を表す `<remotePackage path="cmdline-tools;latest">`（表示名「Android SDK Command-line Tools (latest)」）の部分だけを取り出す
+   3. その中の Linux 用ファイル名 `commandlinetools-linux-XXXXXXXX_latest.zip` を取り出す
+
+   `commandlinetools-linux-16111833_latest.zip` のように表示されれば成功です（数字は最新版に合わせて変わります）。何も表示されない場合は、ネットワーク接続を確認してください。
+
+   > XML をブラウザ等で開いて手動で確認する場合は、`cmdline-tools;latest` のブロック内にある `<host-os>linux</host-os>` の `<url>` の値がファイル名です。
+
+3. **SDK ディレクトリを作成し、コマンドラインツールをダウンロード・配置します**：
+
+   手順2で取得したファイル名を `https://dl.google.com/android/repository/` の後ろにつなげた URL からダウンロードします（手順2と同じターミナルで続けて実行してください）。
+
+   ```bash
+   mkdir -p ~/Android/Sdk/cmdline-tools
+   cd ~/Android/Sdk/cmdline-tools
+   wget "https://dl.google.com/android/repository/${CMDLINE_ZIP}" -O cmdline-tools.zip
+   unzip cmdline-tools.zip && mv cmdline-tools latest && rm cmdline-tools.zip
+   ```
+
+   > **注意**: 展開したフォルダは必ず `~/Android/Sdk/cmdline-tools/latest/` という構成にしてください（`mv cmdline-tools latest` の部分）。この構成になっていないと、`sdkmanager` が「Could not determine SDK root」等のエラーで動きません。
+
+4. **DHU（`extras;google;auto`）をインストールします**：
+
+   ```bash
+   yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "extras;google;auto"
+   ```
+
+   先頭の `yes |` は、ライセンスへの同意を自動で回答するためのものです。
+
+5. **（Wi-Fi 接続の方法2 や `adb devices` を使う場合）adb（platform-tools）もインストールします**：
+
+   ```bash
+   ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "platform-tools"
+   ```
+
+   USB 接続と Wi-Fi 接続の方法1 だけなら不要ですが、トラブルシューティングで役立つため入れておくのがおすすめです。Linux Auto は SDK 内の `platform-tools` を自動で探すため、PATH の設定は不要です。
+
+6. **実行権限を付与します**：
+
    ```bash
    chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit
    ```
+
+7. **インストールを確認します**：
+
+   ```bash
+   ls -l ~/Android/Sdk/extras/google/auto/desktop-head-unit
+   ```
+
+   ファイルが表示され、権限に `x` が含まれていれば完了です。
+
+#### 方法B: Android Studio (GUI) から導入する場合
+
+すでに Android Studio を使っている場合はこちらが簡単です。
+
+1. Android Studio を起動し、スタート画面の **「More Actions」→「SDK Manager」**（プロジェクトを開いている場合は「Settings」→「Languages & Frameworks」→「Android SDK」）を開きます。
+2. 上部のタブで **「SDK Tools」** を選択します。
+3. 一覧の中にある **「Android Auto Desktop Head Unit emulator」** にチェックを入れます（adb を使う場合は「Android SDK Platform-Tools」も）。
+4. 右下の **「Apply」** をクリックしてダウンロード・インストールを完了させます。
+5. インストール後、実行権限を付与します：
+
+   ```bash
+   chmod +x ~/Android/Sdk/extras/google/auto/desktop-head-unit
+   ```
+
+#### SDK を標準以外の場所にインストールした場合
+
+Linux Auto（設定画面の「標準パス自動探索」）は、次の場所から `extras/google/auto/desktop-head-unit` を順に探します。
+
+1. 環境変数 `ANDROID_HOME` / `ANDROID_SDK_ROOT` が指す場所
+2. `~/Android/Sdk`（Android Studio の既定）
+3. `~/AndroidSdk`、`~/.android-sdk`
+4. `/usr/lib/android-sdk`、`/opt/android-sdk`
+
+これ以外の場所に入れた場合は、設定画面の「DHU 実行ファイルのパス」にフルパスを直接入力して保存してください。
+
+#### DHU のアップデート
+
+```bash
+~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/Android/Sdk --update
+```
+
+アップデート後は、念のため方法Aの手順6の `chmod +x` を再実行してください。
 
 ### 事前準備 (スマートフォン側 - Android Auto 開発者モード)
 
@@ -215,9 +347,9 @@ KDE Plasma 6（Wayland）では、DHU のような X11 アプリは XWayland 経
 
 Linux Auto は KDE を検出すると、DHU のウィンドウ専用の **KWin ウィンドウルール** を自動で登録します。システム設定 →「ウィンドウ管理」→「ウィンドウルール」に表示されるものと同じで、次の 2 項目を「強制」します。
 
-| 項目 | 値 |
-| :--- | :--- |
-| フォーカス奪取防止 | なし |
+| 項目                   | 値   |
+| :--------------------- | :--- |
+| フォーカス奪取防止     | なし |
 | フォーカスを受け付ける | はい |
 
 - **対象の指定**: ウィンドウタイトルの部分一致で指定します（初回は `Desktop Head Unit`、DHU のウィンドウが開いた後は実際のタイトル `Android Auto - Desktop Head Unit`）。実機では WM_CLASS で指定すると効かなかったため、タイトルで指定しています。DHU のウィンドウのタイトルと WM_CLASS は読み取り専用で確認し（ウィンドウの移動・リサイズ・フォーカス操作は一切しません）、ログに `[KDE] DHU のウィンドウを確認: …` と表示して `~/.config/linux-auto/dhu-window.json` に保存します。
@@ -250,14 +382,14 @@ Linux Auto は KDE を検出すると、DHU のウィンドウ専用の **KWin �
 
 DHU は「ウィンドウを自分で閉じた」場合も「通信が切れた」場合も**終了コード 0** で終わり、終了時の出力にも区別できる情報が出ないことがあります（実機ログで確認）。そこで Linux Auto は、DHU が終了した直後に**実際の接続状態を確認**して終了理由を判定します。
 
-| 判定 | 条件 | 動作 |
-| :--- | :--- | :--- |
-| 強制切断 | 終了コードが 0 以外（異常終了） | 10 秒後に自動復帰 |
-| 強制切断 | 終了直前に通信エラー（`[E]: Failed to read from transport - disconnect.` 等）が出た | 10 秒後に自動復帰 |
-| 強制切断 | スマホとの接続確立（`Phone reported protocol version`）前に終了した | 10 秒後に自動復帰 |
-| **USB** ケーブル抜け | スマホ（DHU のログに出るシリアル番号で識別）が `/sys/bus/usb/devices` から消えた（AOA モード解除後の再認識を最大 5 秒待って確認） | 10 秒後に自動復帰 |
-| **Wi-Fi** 切断 | スマホ（テザリング親機）への経路がなくなった / 方法2 で Wi-Fi ADB の接続がなくなった | 10 秒後に自動復帰 |
-| **ウィンドウを閉じた** | 上記のどれにも当てはまらない（スマホは USB に接続されたまま / Wi-Fi の経路も残っている） | **自動復帰せず停止**し、画面に「DHU のウィンドウが閉じられたため、接続を終了しました」と表示 |
+| 判定                   | 条件                                                                                                                              | 動作                                                                                         |
+| :--------------------- | :-------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------- |
+| 強制切断               | 終了コードが 0 以外（異常終了）                                                                                                   | 10 秒後に自動復帰                                                                            |
+| 強制切断               | 終了直前に通信エラー（`[E]: Failed to read from transport - disconnect.` 等）が出た                                               | 10 秒後に自動復帰                                                                            |
+| 強制切断               | スマホとの接続確立（`Phone reported protocol version`）前に終了した                                                               | 10 秒後に自動復帰                                                                            |
+| **USB** ケーブル抜け   | スマホ（DHU のログに出るシリアル番号で識別）が `/sys/bus/usb/devices` から消えた（AOA モード解除後の再認識を最大 5 秒待って確認） | 10 秒後に自動復帰                                                                            |
+| **Wi-Fi** 切断         | スマホ（テザリング親機）への経路がなくなった / 方法2 で Wi-Fi ADB の接続がなくなった                                              | 10 秒後に自動復帰                                                                            |
+| **ウィンドウを閉じた** | 上記のどれにも当てはまらない（スマホは USB に接続されたまま / Wi-Fi の経路も残っている）                                          | **自動復帰せず停止**し、画面に「DHU のウィンドウが閉じられたため、接続を終了しました」と表示 |
 
 - 判定結果はログに `[判定] …` として理由とともに表示されます。
 - 判定に迷う場合（スマホの情報が取れない等）は、従来どおり**自動復帰する側**に倒します。
@@ -312,7 +444,7 @@ Google Chrome, Chromium, Microsoft Edge などで `http://127.0.0.1:8855` を開
 
 ### 2. 設定ページ (Settings)
 
-- **DHU 実行ファイルのパス**: `desktop-head-unit` のフルパスを設定可能。「標準パス自動探索」ボタンで典型的なパスを自動検出します。
+- **DHU 実行ファイルのパス**: `desktop-head-unit` のフルパスを設定可能。「標準パス自動探索」ボタンで典型的なパスを自動検出します。未インストールの場合は「自動セットアップを開く」ボタンから導入ガイドの自動セットアップへ移動できます。
 - **headunit.ini のパラメータ設定**:
   - `touch`: タッチパネルの許可 (`true` / `false`)
   - `touchpad`: タッチパッド (`true` / `false`、基本は `false`)
@@ -332,6 +464,7 @@ framerate = 30
 
 ### 3. 導入ガイドページ (Guide)
 
+- **自動セットアップ**: ボタン 1 つで `setup-sdk.py` を実行し、Android SDK / DHU のインストール、DHU のパスの保存、`headunit.ini` の書き込みまでを行います。進捗をリアルタイムのログで表示し、途中で中止もできます。
 - Android SDK / DHU の導入、スマートフォン側の設定、**Wi-Fi（テザリング）接続の準備（方法1 / 方法2）**、**サービス登録 (`install-service.sh`)**、**起動アイコン登録 (`install-desktop-shortcut.sh`)** の手順をコピーボタン付きで掲載。
 - 現在のサーバー起動方式（サービス常駐 / 手動起動）を表示します。
 
@@ -352,6 +485,7 @@ LinuxAuto/
 ├── open-ui.sh                  # 画面を開くだけのランチャー (アイコンの起動先)
 ├── start.sh                    # 手動 (フォアグラウンド) 起動シェル
 ├── connect.sh                  # ターミナル直結CLI起動ツール
+├── setup-sdk.py                # Android SDK / DHU 自動セットアップ (画面・コマンドライン共通)
 ├── install-desktop-shortcut.sh # デスクトップショートカット自動インストーラー
 ├── linux-auto.desktop          # XDG デスクトップエントリ定義 (テンプレート)
 ├── static/                     # フロントエンド静的ファイル
@@ -380,7 +514,9 @@ LinuxAuto/
 
 1. **「desktop-head-unit が見つかりません」と表示される場合**:
    - 設定画面で `desktop-head-unit` のパスが正しいか確認してください。
+   - 導入ガイドの「自動セットアップ」（または `python3 setup-sdk.py --yes`）を実行すると、インストールとパスの設定をまとめて行えます。
    - Android Studio の SDK Manager で `Extras` → `Android Auto Desktop Head Unit emulator` にチェックが入っているか確認してください。
+   - パスは正しいのに DHU が起動しない（ログに `libc++.so.1: cannot open shared object file` 等）場合は、`sudo apt install -y libc++1 libc++abi1` を実行してください。
 2. **「実行権限がありません」と表示される場合**:
    - `chmod +x /path/to/desktop-head-unit` を実行してバイナリに実行権限を付与してください。
 3. **USB接続しても画面が表示されない場合**:

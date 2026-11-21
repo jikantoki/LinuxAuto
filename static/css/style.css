@@ -1608,3 +1608,40 @@ input:checked + .slider:before {
     gap: 1rem;
   }
 }
+
+/* ==========================================================================
+   Android SDK / DHU 自動セットアップ (導入ガイド)
+   ========================================================================== */
+.sdk-setup-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 1rem 0;
+}
+
+.sdk-setup-options .checkbox-inline {
+  font-size: 0.9rem;
+}
+
+.sdk-setup-options a {
+  color: var(--primary);
+}
+
+.sdk-setup-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.sdk-setup-actions .btn[hidden],
+.sdk-setup-actions .badge[hidden],
+.sdk-setup-log[hidden] {
+  display: none;
+}
+
+.sdk-setup-log {
+  height: 280px;
+  margin-bottom: 1rem;
+}

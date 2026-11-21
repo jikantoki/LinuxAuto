@@ -81,6 +81,9 @@ DHU_WINDOW_INFO_PATH = APP_CONFIG_DIR / "dhu-window.json"
 # 静的ファイル（HTML/CSS/JS）が配置されるディレクトリ
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Android SDK / DHU の自動セットアップスクリプト (画面・コマンドラインの両方から使う)
+SETUP_SDK_SCRIPT = Path(__file__).resolve().parent / "setup-sdk.py"
+
 
 # =============================================================================
 # 設定管理クラス (Configuration Manager)
@@ -1704,6 +1707,123 @@ dhu_manager = DHUManager()
 
 
 # =============================================================================
+# Android SDK / DHU 自動セットアップの実行管理 (setup-sdk.py を子プロセスで実行)
+# =============================================================================
+class SDKSetupManager:
+    """
+    画面の「自動セットアップ」ボタンから setup-sdk.py を実行し、出力をログとして保持します。
+    コマンドラインから ./setup-sdk.py を実行した場合と同じ処理になります。
+    (Node.js の child_process.spawn() で stdout を読み続ける処理に相当)
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.process = None
+        self.status = "IDLE"        # "IDLE" | "RUNNING" | "SUCCESS" | "ERROR" | "CANCELLED"
+        self.exit_code = None
+        self.logs = []
+        self.max_logs = 1000
+        self.cancelled = False
+
+    def _add(self, line):
+        with self._lock:
+            self.logs.append(line)
+            if len(self.logs) > self.max_logs:
+                self.logs.pop(0)
+
+    def get_status(self):
+        with self._lock:
+            return {
+                "status": self.status,
+                "running": self.status == "RUNNING",
+                "exit_code": self.exit_code,
+                "logs": list(self.logs),
+                "script": str(SETUP_SDK_SCRIPT),
+            }
+
+    def start(self, options=None):
+        options = options or {}
+        with self._lock:
+            if self.status == "RUNNING":
+                return False, "自動セットアップはすでに実行中です"
+        if dhu_manager.is_busy():
+            return False, "接続中は自動セットアップを実行できません。先に「切断 / 停止」してください"
+        if not SETUP_SDK_SCRIPT.is_file():
+            return False, f"セットアップスクリプトが見つかりません: {SETUP_SDK_SCRIPT}"
+
+        # 画面からはライセンス同意のチェックを必須にしているため --yes で実行する
+        cmd = [sys.executable, "-u", str(SETUP_SDK_SCRIPT), "--yes"]
+        if not options.get("platform_tools", True):
+            cmd.append("--no-platform-tools")
+        if options.get("reinstall"):
+            cmd.append("--reinstall")
+        if options.get("reset_ini"):
+            cmd.append("--reset-ini")
+        if not options.get("install_deps", True):
+            cmd.append("--no-install-deps")
+
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        # 足りないパッケージのインストール (pkexec) でパスワード入力のダイアログを
+        # デスクトップに出せるよう、ログイン中のセッションの環境変数を引き継ぐ
+        for key, value in get_systemd_user_session_env().items():
+            if is_running_as_service() or not env.get(key):
+                env[key] = value
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=str(SETUP_SDK_SCRIPT.parent),
+                env=env,
+                start_new_session=True,  # 中止時に sdkmanager (Java) ごと止めるため
+            )
+        except OSError as e:
+            return False, f"セットアップを開始できませんでした: {e}"
+
+        with self._lock:
+            self.process = proc
+            self.status = "RUNNING"
+            self.exit_code = None
+            self.cancelled = False
+            self.logs = ["$ " + " ".join(cmd[0:1] + cmd[2:])]
+        threading.Thread(target=self._read_output, args=(proc,), daemon=True).start()
+        dhu_manager.add_log("[SDK] 自動セットアップを開始しました")
+        return True, "自動セットアップを開始しました"
+
+    def _read_output(self, proc):
+        for raw in iter(proc.stdout.readline, b""):
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                self._add(line)
+        code = proc.wait()
+        with self._lock:
+            self.exit_code = code
+            if self.cancelled:
+                self.status = "CANCELLED"
+            else:
+                self.status = "SUCCESS" if code == 0 else "ERROR"
+            status = self.status
+        dhu_manager.add_log(f"[SDK] 自動セットアップが終了しました ({status}, 終了コード {code})")
+
+    def cancel(self):
+        with self._lock:
+            proc = self.process
+            if self.status != "RUNNING" or proc is None:
+                return False, "実行中の自動セットアップはありません"
+            self.cancelled = True
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except OSError:
+            pass
+        return True, "自動セットアップを中止しました"
+
+
+sdk_setup_manager = SDKSetupManager()
+
+
+# =============================================================================
 # HTTPリクエストハンドラー (REST API + 静的Web配信)
 # =============================================================================
 class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
@@ -1783,6 +1903,11 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
             return
 
         # API: ネットワーク情報 (テザリング親機 = スマホ IP の自動検出結果)
+        # API: Android SDK / DHU 自動セットアップの状態
+        if path == "/api/sdk-setup":
+            self._send_json(200, sdk_setup_manager.get_status())
+            return
+
         if path == "/api/network":
             info = NetworkHelper.info()
             app_config = ConfigManager.load_app_config()
@@ -1898,6 +2023,29 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
             self._send_json(200, {"success": ok, "message": out, "devices": adb.devices()})
             return
 
+        # API: Android SDK / DHU 自動セットアップの開始・中止
+        if path == "/api/sdk-setup":
+            payload = self._read_json_body()
+            if not payload.get("accept_license"):
+                self._send_json(400, {
+                    "success": False,
+                    "message": "Android SDK のライセンスへの同意が必要です",
+                    "setup": sdk_setup_manager.get_status(),
+                })
+                return
+            ok, msg = sdk_setup_manager.start(payload)
+            self._send_json(200 if ok else 400, {
+                "success": ok,
+                "message": msg,
+                "setup": sdk_setup_manager.get_status(),
+            })
+            return
+
+        if path == "/api/sdk-setup/cancel":
+            ok, msg = sdk_setup_manager.cancel()
+            self._send_json(200, {"success": ok, "message": msg, "setup": sdk_setup_manager.get_status()})
+            return
+
         # API: DHU実行ファイルの存在チェック
         if path == "/api/check-dhu":
             payload = self._read_json_body()
@@ -2007,6 +2155,7 @@ def main():
         pass
     finally:
         dhu_manager.stop()
+        sdk_setup_manager.cancel()
         httpd.server_close()
         print("[完了] サーバーを停止しました。")
 

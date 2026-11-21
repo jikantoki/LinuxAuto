@@ -1007,6 +1007,155 @@ framerate = ${data.framerate}`
   })
 
   // =========================================================================
+  // 9.5 Android SDK / DHU 自動セットアップ (setup-sdk.py を画面から実行)
+  // =========================================================================
+  const sdk = {
+    btn: document.getElementById('btn-sdk-setup'),
+    btnCancel: document.getElementById('btn-sdk-setup-cancel'),
+    status: document.getElementById('sdk-setup-status'),
+    log: document.getElementById('sdk-setup-log'),
+    optInstallDeps: document.getElementById('sdk-opt-install-deps'),
+    optPlatformTools: document.getElementById('sdk-opt-platform-tools'),
+    optReinstall: document.getElementById('sdk-opt-reinstall'),
+    optResetIni: document.getElementById('sdk-opt-reset-ini'),
+    optAccept: document.getElementById('sdk-opt-accept'),
+    gotoBtn: document.getElementById('btn-goto-sdk-setup'),
+    timer: null,
+    lastStatus: null,
+    lastLogKey: '',
+  }
+
+  const SDK_STATUS_LABELS = {
+    RUNNING: ['badge-info', '実行中...'],
+    SUCCESS: ['badge-success', '✓ 完了'],
+    ERROR: ['badge-danger', '✕ 失敗（ログを確認してください）'],
+    CANCELLED: ['badge-danger', '中止しました'],
+  }
+
+  function sdkLogColor(line) {
+    if (line.includes('[エラー]') || line.includes('[中断]')) return '#f87171'
+    if (line.includes('[注意]') || line.includes('次の対応が必要')) return '#fbbf24'
+    if (line.includes('[完了]') || line.trim().startsWith('OK:')) return '#34d399'
+    if (/^\[\d\/\d\]/.test(line)) return '#38bdf8'
+    return ''
+  }
+
+  function renderSdkSetup(data) {
+    if (!sdk.btn || !data || data.error || !data.status) return
+    const running = data.status === 'RUNNING'
+
+    sdk.btn.disabled = running || !sdk.optAccept.checked
+    sdk.btnCancel.hidden = !running
+    ;[
+      sdk.optInstallDeps,
+      sdk.optPlatformTools,
+      sdk.optReinstall,
+      sdk.optResetIni,
+      sdk.optAccept,
+    ].forEach((el) => {
+      el.disabled = running
+    })
+
+    const label = SDK_STATUS_LABELS[data.status]
+    sdk.status.hidden = !label
+    if (label) {
+      sdk.status.className = `badge ${label[0]}`
+      sdk.status.textContent = label[1]
+    }
+
+    const logs = data.logs || []
+    const logKey = `${logs.length}:${logs[logs.length - 1] || ''}`
+    if (logs.length > 0 && logKey !== sdk.lastLogKey) {
+      sdk.lastLogKey = logKey
+      sdk.log.hidden = false
+      const atBottom =
+        sdk.log.scrollTop + sdk.log.clientHeight >= sdk.log.scrollHeight - 24
+      sdk.log.innerHTML = ''
+      logs.forEach((line) => {
+        const div = document.createElement('div')
+        div.className = 'log-line'
+        div.textContent = line
+        const color = sdkLogColor(line)
+        if (color) div.style.color = color
+        sdk.log.appendChild(div)
+      })
+      if (atBottom || running) sdk.log.scrollTop = sdk.log.scrollHeight
+    }
+
+    // 実行中 → 終了 に変わったとき、結果を通知して設定画面の内容を読み直す
+    if (sdk.lastStatus === 'RUNNING' && !running) {
+      if (data.status === 'SUCCESS') {
+        const needsAction = logs.some((l) => l.includes('次の対応が必要'))
+        showToast(
+          needsAction
+            ? 'セットアップは完了しましたが、追加の対応が必要です（ログを確認してください）'
+            : '自動セットアップが完了しました（DHU のパスと headunit.ini を保存しました）',
+          5000,
+        )
+        loadConfig()
+      } else if (data.status === 'ERROR') {
+        showToast('自動セットアップに失敗しました。ログを確認してください', 5000)
+      }
+    }
+    sdk.lastStatus = data.status
+
+    // 実行中だけ 1 秒ごとに状態を取得する
+    if (running && !sdk.timer) {
+      sdk.timer = setInterval(refreshSdkSetup, 1000)
+    } else if (!running && sdk.timer) {
+      clearInterval(sdk.timer)
+      sdk.timer = null
+    }
+  }
+
+  async function refreshSdkSetup() {
+    renderSdkSetup(await apiRequest('/api/sdk-setup'))
+  }
+
+  if (sdk.btn) {
+    sdk.optAccept.addEventListener('change', () => {
+      if (sdk.lastStatus !== 'RUNNING') sdk.btn.disabled = !sdk.optAccept.checked
+    })
+
+    sdk.btn.addEventListener('click', async () => {
+      if (!sdk.optAccept.checked) {
+        showToast('Android SDK のライセンスへの同意が必要です')
+        return
+      }
+      sdk.btn.disabled = true
+      const res = await apiRequest('/api/sdk-setup', 'POST', {
+        accept_license: true,
+        install_deps: sdk.optInstallDeps.checked,
+        platform_tools: sdk.optPlatformTools.checked,
+        reinstall: sdk.optReinstall.checked,
+        reset_ini: sdk.optResetIni.checked,
+      })
+      showToast(res.message || '自動セットアップを開始できませんでした', 4000)
+      if (res.setup) {
+        sdk.lastLogKey = ''
+        renderSdkSetup(res.setup)
+      } else {
+        sdk.btn.disabled = !sdk.optAccept.checked
+      }
+    })
+
+    sdk.btnCancel.addEventListener('click', async () => {
+      const res = await apiRequest('/api/sdk-setup/cancel', 'POST')
+      showToast(res.message || '中止しました')
+      refreshSdkSetup()
+    })
+  }
+
+  // 設定画面の「自動セットアップを開く」→ 導入ガイドの自動セットアップ欄へ移動
+  if (sdk.gotoBtn) {
+    sdk.gotoBtn.addEventListener('click', () => {
+      switchTab('tab-guide')
+      const target = document.getElementById('sdk-setup')
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  // =========================================================================
   // 10. 初期化と定期ポーリング開始
   // =========================================================================
   // 詳細設定の開閉状態を復元 (初回は閉じた状態)
@@ -1020,6 +1169,7 @@ framerate = ${data.framerate}`
 
   loadConfig()
   updateStatus()
+  refreshSdkSetup()
 
   // 1秒ごとにステータスとログを更新
   setInterval(updateStatus, 1000)
