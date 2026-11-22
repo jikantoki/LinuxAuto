@@ -93,7 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   elements.navItems.forEach((item) => {
-    item.addEventListener('click', () => switchTab(item.dataset.tab))
+    item.addEventListener('click', () => {
+      switchTab(item.dataset.tab)
+      if (item.dataset.tab === 'tab-main') checkSdkRequired()
+    })
   })
 
   if (elements.btnGotoSettings) {
@@ -927,6 +930,7 @@ framerate = ${data.framerate}`
         elements.saveStatusMsg.textContent = ''
       }, 3000)
       updateSummaryUI(iniData)
+      checkSdkRequired()
     } else {
       showToast('設定の保存に失敗しました', 4000)
     }
@@ -1082,6 +1086,8 @@ framerate = ${data.framerate}`
       if (atBottom || running) sdk.log.scrollTop = sdk.log.scrollHeight
     }
 
+    renderSdkRequiredProgress(data, logs)
+
     // 実行中 → 終了 に変わったとき、結果を通知して設定画面の内容を読み直す
     if (sdk.lastStatus === 'RUNNING' && !running) {
       if (data.status === 'SUCCESS') {
@@ -1093,6 +1099,7 @@ framerate = ${data.framerate}`
           5000,
         )
         loadConfig()
+        checkSdkRequired(true)
       } else if (data.status === 'ERROR') {
         showToast('自動セットアップに失敗しました。ログを確認してください', 5000)
       }
@@ -1156,6 +1163,168 @@ framerate = ${data.framerate}`
   }
 
   // =========================================================================
+  // 9.6 Android SDK (DHU) の確認と、未セットアップ時の案内画面
+  //     DHU のパスが正しくないときは、メイン画面を案内画面に差し替えて
+  //     「全自動セットアップ」(setup-sdk.py) を実行できるようにする
+  // =========================================================================
+  const req = {
+    pane: document.getElementById('tab-main'),
+    panel: document.getElementById('sdk-required'),
+    reason: document.getElementById('sdk-required-reason'),
+    path: document.getElementById('sdk-required-path'),
+    detected: document.getElementById('sdk-required-detected'),
+    detectedPath: document.getElementById('sdk-required-detected-path'),
+    btnUseDetected: document.getElementById('btn-sdk-use-detected'),
+    btnSetup: document.getElementById('btn-sdk-auto-setup'),
+    btnRecheck: document.getElementById('btn-sdk-recheck'),
+    btnManual: document.getElementById('btn-sdk-manual'),
+    progress: document.getElementById('sdk-required-progress'),
+    status: document.getElementById('sdk-required-status'),
+    btnCancel: document.getElementById('btn-sdk-required-cancel'),
+    log: document.getElementById('sdk-required-log'),
+    dialog: document.getElementById('sdk-confirm-dialog'),
+    required: false,
+    setupUnavailable: false,
+    sawRunning: false, // この画面で実行中の状態を見たか (前回の実行結果は表示しない)
+    lastLogKey: '',
+  }
+
+  function setSdkRequired(required) {
+    if (!req.panel) return
+    req.required = required
+    req.panel.hidden = !required
+    req.pane.classList.toggle('setup-required', required)
+  }
+
+  function renderSdkRequired(data, quiet = false) {
+    if (!req.panel || !data || data.error || typeof data.valid !== 'boolean')
+      return
+    if (data.valid) {
+      if (req.required && !quiet)
+        showToast('desktop-head-unit を確認しました。接続できます')
+      setSdkRequired(false)
+      return
+    }
+
+    req.reason.textContent =
+      data.reason || 'desktop-head-unit が見つかりません。'
+    req.path.textContent = data.dhu_path || '（未設定）'
+    req.detected.hidden = !data.detected_path
+    req.detectedPath.textContent = data.detected_path || ''
+    req.setupUnavailable = !data.setup_available
+    req.btnSetup.disabled = !data.setup_available || data.setup_running
+    if (!data.setup_available) {
+      req.reason.textContent +=
+        '（setup-sdk.py が見つからないため、全自動セットアップは使えません）'
+    }
+    setSdkRequired(true)
+    if (data.setup_running) refreshSdkSetup()
+  }
+
+  async function checkSdkRequired(quiet = false) {
+    renderSdkRequired(await apiRequest('/api/sdk-check'), quiet)
+  }
+
+  // 自動セットアップの進捗を、案内画面にも表示する (導入ガイドの欄と同じ内容)
+  function renderSdkRequiredProgress(data, logs) {
+    if (!req.panel) return
+    const running = data.status === 'RUNNING'
+    req.btnSetup.disabled = running || req.setupUnavailable
+    req.btnUseDetected.disabled = running
+    req.btnCancel.hidden = !running
+
+    if (running) req.sawRunning = true
+    const label = SDK_STATUS_LABELS[data.status]
+    if (!label || !req.sawRunning) {
+      req.progress.hidden = true
+      return
+    }
+    req.progress.hidden = false
+    req.status.className = `badge ${label[0]}`
+    req.status.textContent = label[1]
+
+    const logKey = `${logs.length}:${logs[logs.length - 1] || ''}`
+    if (logKey === req.lastLogKey) return
+    req.lastLogKey = logKey
+    const atBottom =
+      req.log.scrollTop + req.log.clientHeight >= req.log.scrollHeight - 24
+    req.log.innerHTML = ''
+    logs.forEach((line) => {
+      const div = document.createElement('div')
+      div.className = 'log-line'
+      div.textContent = line
+      const color = sdkLogColor(line)
+      if (color) div.style.color = color
+      req.log.appendChild(div)
+    })
+    if (atBottom || running) req.log.scrollTop = req.log.scrollHeight
+  }
+
+  async function startFullAutoSetup() {
+    req.btnSetup.disabled = true
+    const res = await apiRequest('/api/sdk-setup', 'POST', {
+      accept_license: true,
+      install_deps: true,
+      platform_tools: true,
+    })
+    showToast(res.message || '全自動セットアップを開始できませんでした', 4000)
+    if (res.setup) {
+      sdk.lastLogKey = ''
+      req.lastLogKey = ''
+      renderSdkSetup(res.setup)
+    } else {
+      req.btnSetup.disabled = false
+    }
+  }
+
+  if (req.panel) {
+    // 「全自動セットアップを実行」→ 約500MBのダウンロードと利用規約への同意を確認してから実行
+    req.btnSetup.addEventListener('click', () => {
+      if (typeof req.dialog.showModal === 'function') {
+        req.dialog.returnValue = ''
+        req.dialog.showModal()
+      } else if (
+        window.confirm(
+          '約 500MB のダウンロードを行い、Google の利用規約（Android SDK ライセンス契約）に同意して実行しますか？',
+        )
+      ) {
+        startFullAutoSetup()
+      }
+    })
+
+    req.dialog.addEventListener('close', () => {
+      if (req.dialog.returnValue === 'yes') startFullAutoSetup()
+    })
+
+    req.btnRecheck.addEventListener('click', async () => {
+      await checkSdkRequired()
+      if (req.required) showToast('desktop-head-unit はまだ見つかりません')
+    })
+
+    req.btnManual.addEventListener('click', () => switchTab('tab-settings'))
+
+    req.btnUseDetected.addEventListener('click', async () => {
+      const path = req.detectedPath.textContent.trim()
+      if (!path) return
+      const res = await apiRequest('/api/config', 'POST', {
+        app_config: { dhu_path: path },
+      })
+      if (res.success) {
+        loadConfig()
+        checkSdkRequired()
+      } else {
+        showToast('パスの保存に失敗しました', 4000)
+      }
+    })
+
+    req.btnCancel.addEventListener('click', async () => {
+      const res = await apiRequest('/api/sdk-setup/cancel', 'POST')
+      showToast(res.message || '中止しました')
+      refreshSdkSetup()
+    })
+  }
+
+  // =========================================================================
   // 10. 初期化と定期ポーリング開始
   // =========================================================================
   // 詳細設定の開閉状態を復元 (初回は閉じた状態)
@@ -1170,6 +1339,8 @@ framerate = ${data.framerate}`
   loadConfig()
   updateStatus()
   refreshSdkSetup()
+  // 画面を開いたときに DHU (Android SDK) のパスを確認し、正しくなければ案内画面に差し替える
+  checkSdkRequired()
 
   // 1秒ごとにステータスとログを更新
   setInterval(updateStatus, 1000)

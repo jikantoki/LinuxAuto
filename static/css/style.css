@@ -1645,3 +1645,147 @@ input:checked + .slider:before {
   height: 280px;
   margin-bottom: 1rem;
 }
+
+/* ==========================================================================
+   Android SDK (DHU) 未セットアップ時の案内画面 (メイン画面を差し替え)
+   ========================================================================== */
+#tab-main.setup-required > :not(#sdk-required) {
+  display: none !important;
+}
+
+.sdk-required[hidden],
+.sdk-required [hidden] {
+  display: none !important;
+}
+
+.sdk-required-card {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.12), 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.sdk-required-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.sdk-required-head h2 {
+  font-size: 1.4rem;
+  margin-bottom: 0.35rem;
+}
+
+.sdk-required-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.sdk-required-reason {
+  color: #fcd34d;
+}
+
+.sdk-required-info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.sdk-required-info dt {
+  color: var(--text-secondary);
+}
+
+.sdk-required-info dd {
+  word-break: break-all;
+}
+
+.sdk-required-detected {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(16, 185, 129, 0.1);
+  border-left: 4px solid var(--success);
+  color: #a7f3d0;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.sdk-required-lead {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin-bottom: 1.25rem;
+}
+
+.sdk-required-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+/* 実行前の確認ダイアログ */
+.sdk-dialog {
+  margin: auto;
+  max-width: 560px;
+  width: calc(100% - 2rem);
+  padding: 1.5rem;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.sdk-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sdk-dialog h3 {
+  font-size: 1.15rem;
+  margin-bottom: 1rem;
+}
+
+.sdk-dialog-list {
+  padding-left: 1.2rem;
+  margin-bottom: 1rem;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.sdk-dialog-list li + li {
+  margin-top: 0.4rem;
+}
+
+.sdk-dialog-list strong {
+  color: var(--text-primary);
+}
+
+.sdk-dialog-list a {
+  color: var(--primary);
+}
+
+.sdk-dialog-question {
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.sdk-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

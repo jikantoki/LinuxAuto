@@ -107,6 +107,109 @@
         <!-- 1. メインページ (接続操作・状態監視) -->
         <!-- ========================================================= -->
         <section id="tab-main" class="tab-pane active">
+          <!-- ===================================================== -->
+          <!-- Android SDK (DHU) 未セットアップ時の案内画面          -->
+          <!-- DHU のパスが正しくないとき、メイン画面の代わりに表示する -->
+          <!-- ===================================================== -->
+          <div class="sdk-required" id="sdk-required" hidden>
+            <div class="card sdk-required-card">
+              <div class="sdk-required-head">
+                <div class="sdk-required-icon">
+                  <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor">
+                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2>Android SDK のセットアップが必要です</h2>
+                  <p class="sdk-required-reason" id="sdk-required-reason">
+                    desktop-head-unit が見つかりません。
+                  </p>
+                </div>
+              </div>
+
+              <dl class="sdk-required-info">
+                <dt>設定されているパス</dt>
+                <dd><code id="sdk-required-path">（未設定）</code></dd>
+              </dl>
+
+              <div class="sdk-required-detected" id="sdk-required-detected" hidden>
+                <span
+                  >💡 別の場所で desktop-head-unit が見つかりました:
+                  <code id="sdk-required-detected-path"></code
+                ></span>
+                <button type="button" class="btn btn-sm btn-secondary" id="btn-sdk-use-detected">
+                  このパスを使う
+                </button>
+              </div>
+
+              <p class="sdk-required-lead">
+                「全自動セットアップ」を押すと、Android SDK（Command-line
+                Tools）と Desktop Head Unit のダウンロード・インストールから、設定へのパスの保存、
+                <code>~/.android/headunit.ini</code> の書き込みまでを自動で行います。
+                足りないパッケージ（Java / libc++ など）がある場合は、パスワード入力のダイアログが表示されます。
+              </p>
+
+              <div class="sdk-required-actions">
+                <button type="button" class="btn btn-primary btn-large" id="btn-sdk-auto-setup">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+                  </svg>
+                  全自動セットアップを実行
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-sdk-recheck">
+                  再確認
+                </button>
+                <button type="button" class="btn btn-outline" id="btn-sdk-manual">
+                  パスを手動で設定する
+                </button>
+              </div>
+
+              <div class="sdk-required-progress" id="sdk-required-progress" hidden>
+                <div class="sdk-setup-actions">
+                  <span class="badge badge-info" id="sdk-required-status"></span>
+                  <button type="button" class="btn btn-sm btn-secondary" id="btn-sdk-required-cancel" hidden>
+                    中止
+                  </button>
+                </div>
+                <div class="log-console sdk-setup-log" id="sdk-required-log"></div>
+              </div>
+
+              <!-- 実行前の確認 (約500MBのダウンロード + Google の利用規約への同意) -->
+              <dialog class="sdk-dialog" id="sdk-confirm-dialog">
+                <form method="dialog">
+                  <h3>全自動セットアップを実行しますか？</h3>
+                  <ul class="sdk-dialog-list">
+                    <li>
+                      <strong>約 500MB のダウンロード</strong>を行います（Android SDK
+                      Command-line Tools / Desktop Head Unit / platform-tools
+                      など）。回線によっては数分〜十数分かかります。
+                    </li>
+                    <li>
+                      <strong>Google の利用規約</strong>（<a
+                        href="https://developer.android.com/studio/terms"
+                        target="_blank"
+                        rel="noopener"
+                        >Android SDK ライセンス契約</a
+                      >）に同意したうえでインストールします。
+                    </li>
+                    <li>
+                      Java や DHU に必要なライブラリが足りない場合は、パスワード入力のダイアログが表示されます。
+                    </li>
+                  </ul>
+                  <p class="sdk-dialog-question">
+                    約 500MB のダウンロードを行い、Google の利用規約に同意して実行しますか？
+                  </p>
+                  <div class="sdk-dialog-actions">
+                    <button type="submit" value="no" class="btn btn-secondary">いいえ</button>
+                    <button type="submit" value="yes" class="btn btn-primary">
+                      はい（同意して実行）
+                    </button>
+                  </div>
+                </form>
+              </dialog>
+            </div>
+          </div>
+
           <header class="pane-header">
             <h2>Android Auto 接続</h2>
             <p class="subtitle">

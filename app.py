@@ -1823,6 +1823,41 @@ class SDKSetupManager:
 sdk_setup_manager = SDKSetupManager()
 
 
+def check_dhu_setup():
+    """
+    設定に保存された desktop-head-unit のパスが、実行可能なファイルを指しているかを確認します。
+    保存されたパスが正しくない場合でも、標準の場所 (~/Android/Sdk 等) で見つかれば
+    detected_path として返します (画面の「このパスを使う」ボタン用)。
+    """
+    dhu_path = str(ConfigManager.load_app_config().get("dhu_path", "")).strip()
+    exists = bool(dhu_path) and os.path.isfile(dhu_path)
+    executable = exists and os.access(dhu_path, os.X_OK)
+
+    if not dhu_path:
+        reason = "desktop-head-unit のパスが設定されていません。"
+    elif not exists:
+        reason = "設定されたパスに desktop-head-unit が見つかりません。"
+    elif not executable:
+        reason = "desktop-head-unit に実行権限がありません。"
+    else:
+        reason = ""
+
+    detected = ConfigManager.find_default_dhu_path()
+    detected_valid = (
+        detected != dhu_path and os.path.isfile(detected) and os.access(detected, os.X_OK)
+    )
+    return {
+        "valid": executable,
+        "dhu_path": dhu_path,
+        "exists": exists,
+        "executable": executable,
+        "reason": reason,
+        "detected_path": detected if detected_valid else "",
+        "setup_available": SETUP_SDK_SCRIPT.is_file(),
+        "setup_running": sdk_setup_manager.get_status()["running"],
+    }
+
+
 # =============================================================================
 # HTTPリクエストハンドラー (REST API + 静的Web配信)
 # =============================================================================
@@ -1903,6 +1938,12 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
             return
 
         # API: ネットワーク情報 (テザリング親機 = スマホ IP の自動検出結果)
+        # API: 設定された desktop-head-unit (Android SDK) のパスが正しいかの確認
+        # 画面を開いたとき、メイン画面をセットアップ案内に差し替えるかの判定に使う
+        if path == "/api/sdk-check":
+            self._send_json(200, check_dhu_setup())
+            return
+
         # API: Android SDK / DHU 自動セットアップの状態
         if path == "/api/sdk-setup":
             self._send_json(200, sdk_setup_manager.get_status())
