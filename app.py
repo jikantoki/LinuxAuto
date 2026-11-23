@@ -318,6 +318,33 @@ def is_running_as_service():
     return bool(os.environ.get("INVOCATION_ID"))
 
 
+def login_uid_min():
+    """
+    人間のユーザーに割り当てられる UID の下限を返します (/etc/login.defs の UID_MIN、既定 1000)。
+    これより小さい UID は sddm / gdm / lightdm などのシステムユーザーです。
+    """
+    try:
+        with open("/etc/login.defs", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == "UID_MIN":
+                    return int(parts[1])
+    except (OSError, ValueError):
+        pass
+    return 1000
+
+
+def is_system_user(uid=None):
+    """
+    システムユーザー (root やログイン画面用の sddm など) かどうかを判定します。
+    ログイン画面 (SDDM 等) もユーザーサービスを起動するため、そこで Linux Auto のサーバーが
+    動いてしまうとポート 8855 を横取りし、ログインしたユーザーのサーバーが起動できなくなります。
+    """
+    if uid is None:
+        uid = os.getuid()
+    return uid < login_uid_min()
+
+
 def get_systemd_user_session_env():
     """
     `systemctl --user show-environment` から、ログイン中のデスクトップセッションが
@@ -1111,6 +1138,9 @@ class DHUManager:
                 "connection": dict(self.connection),
                 # サーバーの起動ごとに変わる ID (専用ウィンドウが再起動・更新を検知して画面を読み込み直すのに使う)
                 "server_id": SERVER_INSTANCE_ID,
+                # サーバーを動かしているユーザー (専用ウィンドウが「自分のサーバーか」を確認するのに使う)
+                "server_uid": os.getuid(),
+                "server_home": str(HOME_DIR),
             }
 
     def is_busy(self):
@@ -2112,6 +2142,26 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
         self._send_json(404, {"error": "Not Found"})
 
 
+def describe_port_owner(host, port):
+    """
+    ポートを使っている Linux Auto サーバーが自分以外のユーザーのものなら、その説明を返します。
+    (自分のサーバー・確認できない場合は空文字)
+    """
+    try:
+        import urllib.request
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(f"http://{host}:{port}/api/status", timeout=2) as res:
+            data = json.loads(res.read().decode("utf-8"))
+    except Exception:
+        return ""
+    uid = data.get("server_uid")
+    if uid is None or uid == os.getuid():
+        return ""
+    home = data.get("server_home") or "?"
+    return (f"ポート {port} は別のユーザー (UID {uid}, ホーム {home}) の Linux Auto サーバーが使用しています。"
+            "このユーザーの設定では動作しません。")
+
+
 # =============================================================================
 # サーバー起動メイン関数
 # =============================================================================
@@ -2148,6 +2198,12 @@ def main():
     if not STATIC_DIR.exists():
         STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
+    # ログイン画面 (sddm 等) のユーザーサービスとして起動された場合は、何もせず終了する。
+    # (linux-auto.service の ConditionUser=!@system と同じ判定。古い systemd 向けの二重チェック)
+    if is_running_as_service() and is_system_user():
+        print(f"[情報] システムユーザー (UID {os.getuid()}) のため Linux Auto サーバーは起動しません。")
+        sys.exit(0)
+
     server_address = (args.host, args.port)
     url = f"http://{args.host}:{args.port}"
 
@@ -2157,6 +2213,9 @@ def main():
         if e.errno == errno.EADDRINUSE:
             # すでにサービス等でサーバーが動いている場合は二重起動せず、画面だけ開いて終了する
             print(f"[情報] ポート {args.port} は既に使用中です。Linux Auto サーバーは起動済みと判断します。")
+            owner = describe_port_owner(args.host, args.port)
+            if owner:
+                print(f"[注意] {owner}")
             if not args.no_browser:
                 print(f"[情報] 画面を開きます: {url}")
                 try:

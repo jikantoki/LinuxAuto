@@ -1034,7 +1034,15 @@ framerate = ${data.framerate}`
     SUCCESS: ['badge-success', '✓ 完了'],
     ERROR: ['badge-danger', '✕ 失敗（ログを確認してください）'],
     CANCELLED: ['badge-danger', '中止しました'],
+    DISCONNECTED: ['badge-danger', '✕ サーバーとの接続が切れました'],
   }
+
+  // 自動セットアップ実行中に、サーバーから応答が無いまま何回続いたら「接続切れ」と判断するか (1 秒ごとに確認)
+  const SDK_DISCONNECT_LIMIT = 5
+  const SDK_DISCONNECT_MESSAGE =
+    '[エラー] Linux Auto サーバーとの接続が切れたため、セットアップの状態を確認できません。'
+  const SDK_SERVER_DOWN_TOAST =
+    'Linux Auto サーバーに接続できません。画面を開き直してから、もう一度実行してください'
 
   function sdkLogColor(line) {
     if (line.includes('[エラー]') || line.includes('[中断]')) return '#f87171'
@@ -1068,6 +1076,7 @@ framerate = ${data.framerate}`
     }
 
     const logs = data.logs || []
+    sdk.lastLogs = logs
     const logKey = `${logs.length}:${logs[logs.length - 1] || ''}`
     if (logs.length > 0 && logKey !== sdk.lastLogKey) {
       sdk.lastLogKey = logKey
@@ -1102,6 +1111,8 @@ framerate = ${data.framerate}`
         checkSdkRequired(true)
       } else if (data.status === 'ERROR') {
         showToast('自動セットアップに失敗しました。ログを確認してください', 5000)
+      } else if (data.status === 'DISCONNECTED') {
+        showToast(SDK_SERVER_DOWN_TOAST, 6000)
       }
     }
     sdk.lastStatus = data.status
@@ -1116,7 +1127,22 @@ framerate = ${data.framerate}`
   }
 
   async function refreshSdkSetup() {
-    renderSdkSetup(await apiRequest('/api/sdk-setup'))
+    const data = await apiRequest('/api/sdk-setup')
+    if (!data || data.error || !data.status) {
+      // サーバーが止まった (応答が無い) まま「実行中...」で固まって見えないよう、
+      // 何回か続けて失敗したら「接続切れ」として表示を終える
+      sdk.failCount = (sdk.failCount || 0) + 1
+      if (sdk.lastStatus === 'RUNNING' && sdk.failCount >= SDK_DISCONNECT_LIMIT) {
+        sdk.failCount = 0
+        renderSdkSetup({
+          status: 'DISCONNECTED',
+          logs: (sdk.lastLogs || []).concat([SDK_DISCONNECT_MESSAGE]),
+        })
+      }
+      return
+    }
+    sdk.failCount = 0
+    renderSdkSetup(data)
   }
 
   if (sdk.btn) {
@@ -1137,7 +1163,10 @@ framerate = ${data.framerate}`
         reinstall: sdk.optReinstall.checked,
         reset_ini: sdk.optResetIni.checked,
       })
-      showToast(res.message || '自動セットアップを開始できませんでした', 4000)
+      showToast(
+        res.message || (res.error ? SDK_SERVER_DOWN_TOAST : '自動セットアップを開始できませんでした'),
+        5000,
+      )
       if (res.setup) {
         sdk.lastLogKey = ''
         renderSdkSetup(res.setup)
@@ -1267,7 +1296,10 @@ framerate = ${data.framerate}`
       install_deps: true,
       platform_tools: true,
     })
-    showToast(res.message || '全自動セットアップを開始できませんでした', 4000)
+    showToast(
+      res.message || (res.error ? SDK_SERVER_DOWN_TOAST : '全自動セットアップを開始できませんでした'),
+      5000,
+    )
     if (res.setup) {
       sdk.lastLogKey = ''
       req.lastLogKey = ''

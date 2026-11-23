@@ -17,6 +17,24 @@ for_each_logged_in_user() {
     done
 }
 
+# ログイン画面 (sddm 等) のシステムユーザーで動いてしまっている Linux Auto を止める
+# (1.0.0 ではログイン画面の時点でサーバーが起動し、ポート 8855 を横取りしていたため)
+stop_system_user_servers() {
+    uid_min=$(awk '$1 == "UID_MIN" { print $2 }' /etc/login.defs 2>/dev/null || true)
+    case "$uid_min" in ''|*[!0-9]*) uid_min=1000 ;; esac
+    ps -eo uid=,pid=,args= 2>/dev/null | while read -r puid pid args; do
+        [ "$puid" -gt 0 ] 2>/dev/null || continue
+        [ "$puid" -lt "$uid_min" ] || continue
+        case "$args" in
+            *"/usr/lib/linux-auto/app.py"*|*"/usr/lib/linux-auto/setup-sdk.py"*)
+                kill "$pid" 2>/dev/null \
+                    && echo "[Linux Auto] システムユーザー (UID $puid) で動いていたプロセスを停止しました: PID $pid"
+                ;;
+        esac
+    done
+    return 0
+}
+
 case "$1" in
     configure)
         if command -v systemctl >/dev/null 2>&1; then
@@ -24,9 +42,11 @@ case "$1" in
             systemctl --global enable "$SERVICE" >/dev/null 2>&1 || true
 
             for_each_logged_in_user daemon-reload
+            stop_system_user_servers
             if [ -n "$2" ]; then
-                # 更新: 動いているサーバーを新しいバージョンで再起動 (止まっている場合はそのまま)
-                for_each_logged_in_user try-restart "$SERVICE"
+                # 更新: 新しいバージョンで再起動する
+                # (ポートを横取りされて止まっていたサーバーも、ここで起動し直す)
+                for_each_logged_in_user restart "$SERVICE"
             else
                 # 新規インストール: ログインし直さなくても使えるようにすぐ起動
                 for_each_logged_in_user start "$SERVICE"

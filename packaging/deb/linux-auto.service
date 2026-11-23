@@ -1,6 +1,10 @@
 [Unit]
 Description=Linux Auto - Android Auto Headunit Support (WebUI server)
 Documentation=https://github.com/jikantoki/LinuxAuto
+# ログイン画面 (sddm / gdm / lightdm 等) のシステムユーザーでは起動しない。
+# (全ユーザー共通の自動起動にしているため、これが無いとログイン画面の時点で
+#  システムユーザーのサーバーがポート 8855 を取り、ログインしたユーザーのサーバーが起動できなくなる)
+ConditionUser=!@system
 
 [Service]
 Type=simple

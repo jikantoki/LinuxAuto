@@ -129,6 +129,30 @@ def server_instance_id(timeout=1.0):
         return None
 
 
+def server_owner_uid(timeout=1.0):
+    """サーバーを動かしているユーザーの UID を返します (応答なし / 旧バージョンのサーバーは None)。"""
+    try:
+        with _DIRECT_OPENER.open(BASE_URL + "api/status", timeout=timeout) as res:
+            return json.loads(res.read().decode("utf-8")).get("server_uid")
+    except Exception:
+        return None
+
+
+def warn_if_foreign_server():
+    """
+    ポート 8855 で応答しているサーバーが別のユーザー (ログイン画面の sddm 等を含む) のものなら警告します。
+    その場合、画面に出る設定やパスはそのユーザーのもので、自動セットアップもそのユーザーとして実行されてしまいます。
+    """
+    uid = server_owner_uid()
+    if uid is None or uid == os.getuid():
+        return
+    notify(
+        f"別のユーザー (UID {uid}) の Linux Auto サーバーにつながっています。"
+        "ターミナルで次を実行してから、画面を開き直してください:\n"
+        f"sudo pkill -u {uid} -f /usr/lib/linux-auto/app.py; systemctl --user restart {SERVICE_NAME}"
+    )
+
+
 class RestartWatcher:
     """サーバーの再起動 (deb の更新・サービスの再起動) を検知して、画面の読み込み直しを指示します。
     数秒おきに check() を呼び、True が返ったら画面を読み込み直します。"""
@@ -892,6 +916,7 @@ def main():
         warn_legacy()
 
     start_server_if_needed()
+    warn_if_foreign_server()
 
     if args.browser:
         return open_in_browser()
