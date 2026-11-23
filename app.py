@@ -78,6 +78,9 @@ APP_CONFIG_PATH = APP_CONFIG_DIR / "config.json"
 # DHU のウィンドウ情報 (タイトル / WM_CLASS)。KDE のウィンドウルールの照合条件に使う
 DHU_WINDOW_INFO_PATH = APP_CONFIG_DIR / "dhu-window.json"
 
+# サーバーの起動ごとに変わる ID (/api/status で返す)
+SERVER_INSTANCE_ID = f"{os.getpid()}-{int(time.time() * 1000)}"
+
 # 静的ファイル（HTML/CSS/JS）が配置されるディレクトリ
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -1106,6 +1109,8 @@ class DHUManager:
                 "logs": list(self.logs),
                 "run_mode": "service" if is_running_as_service() else "manual",
                 "connection": dict(self.connection),
+                # サーバーの起動ごとに変わる ID (専用ウィンドウが再起動・更新を検知して画面を読み込み直すのに使う)
+                "server_id": SERVER_INSTANCE_ID,
             }
 
     def is_busy(self):
@@ -1891,6 +1896,10 @@ class LinuxAutoHTTPHandler(SimpleHTTPRequestHandler):
         if self.path.endswith("sw.js"):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Service-Worker-Allowed", "/")
+        elif not self.path.startswith("/api/"):
+            # 画面のファイル (HTML / JS / CSS) は毎回更新を確認させる (Last-Modified で 304 になるので軽い)
+            # → deb の更新や git pull の後に、古い画面がブラウザのキャッシュに残らない
+            self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
     def _send_json(self, status_code, data):

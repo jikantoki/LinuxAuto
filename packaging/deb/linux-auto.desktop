@@ -1,0 +1,22 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Linux Auto
+GenericName=Android Auto Headunit Support
+Comment=Google DHU を使用した Android Auto 接続 GUI ツール
+Exec=linux-auto
+Icon=linux-auto
+Terminal=false
+Categories=Utility;AudioVideo;
+Keywords=Android;Auto;DHU;Headunit;Car;カーナビ;
+StartupNotify=true
+StartupWMClass=linux-auto
+Actions=fullscreen;browser;
+
+[Desktop Action fullscreen]
+Name=全画面で開く
+Exec=linux-auto --fullscreen
+
+[Desktop Action browser]
+Name=ブラウザで開く
+Exec=linux-auto --browser

@@ -1,0 +1,13 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Linux Auto
+Upstream-Contact: ENOKI ELECTRONICS <https://enoki.xyz>
+Source: https://github.com/jikantoki/LinuxAuto
+
+Files: *
+Copyright: 2026 エノキ電気 ENOKI ELECTRONICS
+License: GPL
+ GPL License
+ .
+ Google Desktop Head Unit (DHU) and Android SDK Platform-Tools (adb) are
+ not part of this package. They are downloaded separately from Google under
+ the Android SDK License Agreement.

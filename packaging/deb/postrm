@@ -1,0 +1,20 @@
+#!/bin/sh
+# Linux Auto - アンインストール後の処理 (postrm)
+#   ログイン中ユーザーの systemd にサービス定義の削除を反映する
+#   ※ 各ユーザーの設定 (~/.config/linux-auto/, ~/.android/headunit.ini) と
+#      Android SDK / DHU (~/Android/Sdk) は削除しません
+set -e
+
+case "$1" in
+    remove|purge)
+        if command -v systemctl >/dev/null 2>&1 && command -v loginctl >/dev/null 2>&1; then
+            loginctl list-users --no-legend 2>/dev/null | while read -r uid user _rest; do
+                [ -n "$user" ] || continue
+                [ "$uid" -ge 1000 ] 2>/dev/null || continue
+                systemctl --user -M "$user@" daemon-reload >/dev/null 2>&1 || true
+            done
+        fi
+        ;;
+esac
+
+exit 0

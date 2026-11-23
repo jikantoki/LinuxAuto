@@ -1,0 +1,4 @@
+#!/bin/sh
+# Linux Auto - Android SDK / DHU 自動セットアップ (setup-sdk.py) をターミナルから実行する
+# 例: linux-auto-setup-sdk --yes    (オプション一覧: linux-auto-setup-sdk --help)
+exec /usr/bin/python3 /usr/lib/linux-auto/setup-sdk.py "$@"

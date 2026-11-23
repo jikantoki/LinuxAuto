@@ -12,6 +12,7 @@
 
 **Linux Auto** は、毎回ターミナルから複雑なコマンドや設定ファイルを扱わなければ使えなかった Ubuntu 系列 OS での Android Auto (Google DHU) 接続を、直感的な Web GUI からワンクリックで管理・実行できるようにするツールです。
 
+- **deb パッケージ + 専用ウィンドウ**: `sudo apt install` だけで導入完了。画面はブラウザではなく独立したアプリのウィンドウで開き、更新も新しい deb を入れるだけです（[詳細](#deb-パッケージでインストールおすすめ)）。
 - **サービス常駐 + 画面はアイコンから**: サーバーは systemd ユーザーサービスとしてログイン時に自動起動。デスクトップアイコンは画面を開くだけなので、いつ開いても・閉じても接続は維持されます。
 - **USB / Wi-Fi 接続の切り替え**: USB（`desktop-head-unit --usb`）に加え、スマホのテザリングに接続した Wi-Fi 接続に対応。Wi-Fi は「方法1: ヘッドユニットサーバーへ直接接続（既定）」「方法2: ADB＋ポートフォワーディング」から選べ、スマホの IP はテザリングのゲートウェイから自動検出します。
 - **10秒自動復帰機能**: ドライブ中やテスト中に不意にUSBケーブルが抜けてプロセスが落ちても、**切断後10秒間は自動的に再接続待機・復帰**を試みます（Wi-Fi 切断時も同様）。DHU のウィンドウを自分で閉じた場合は、それを判別して自動復帰しません（手動停止ボタンを押した場合を除く）。
@@ -198,7 +199,151 @@ Linux Auto（設定画面の「標準パス自動探索」）は、次の場所�
 
 ---
 
+## deb パッケージでインストール（おすすめ）
+
+Linux Auto は **deb パッケージ**としてインストールできます。サービス登録・アプリメニューへのアイコン登録まで自動で行われ、画面は**ブラウザではなく専用のウィンドウ**で開きます。
+
+| 項目               | deb パッケージ版                                         | git のフォルダから使う方式（従来）                         |
+| :----------------- | :------------------------------------------------------- | :--------------------------------------------------------- |
+| 導入               | `sudo apt install ./linux-auto.deb` だけ                  | `install-service.sh` と `install-desktop-shortcut.sh` を実行 |
+| 画面               | 専用ウィンドウ（Qt WebEngine / WebKitGTK）                | ブラウザ                                                   |
+| サーバー           | `/usr/lib/systemd/user/linux-auto.service`（全ユーザー共通） | `~/.config/systemd/user/linux-auto.service`                |
+| 更新               | 新しい deb をインストールするだけ（サーバーも自動で再起動） | `git pull` → `systemctl --user restart linux-auto`         |
+
+> Google DHU と adb は Google のライセンスの都合で deb に含まれていません。インストール後に画面の「導入ガイド」→「自動セットアップ」、またはターミナルで `linux-auto-setup-sdk --yes` を実行して導入してください（[事前準備](#事前準備-linux側---android-sdk-と-dhu-の導入) と同じ処理です）。
+
+### インストール
+
+```bash
+sudo apt install ./linux-auto.deb
+```
+
+`apt` が専用ウィンドウ用の部品（Kubuntu / Ubuntu 24.04 以降は `python3-pyqt6.qtwebengine`、22.04 は `python3-pyqt5.qtwebengine`）も一緒にインストールします。
+インストールが終わると、ログイン中のユーザーのサーバーがすぐに起動し、次回からはログイン時に自動で起動します（ログインし直す必要はありません）。
+
+> **ダブルクリックでのインストールについて**: KDE の Discover などで deb を開いてもインストールできますが、旧方式からの移行案内などのメッセージが見えないため、初回はターミナルからのインストールをおすすめします。
+
+### 起動（専用ウィンドウ）
+
+アプリケーションメニューの **「Linux Auto」** をクリックします（ターミナルからは `linux-auto`）。
+
+- サーバーが止まっていれば自動で起動してから画面を表示します。
+- すでにウィンドウが開いている場合は、新しく開かずに既存のウィンドウを前面に出します。
+- ウィンドウを閉じても、サーバーと Android Auto の接続は止まりません。
+- サーバーが再起動した場合（deb の更新など）は、復帰を待って自動で画面を読み込み直します。
+- GitHub などの外部リンクは、普段使っているブラウザで開きます。
+- ウィンドウの位置・サイズ・拡大率・全画面の状態は次回も引き継ぎます（保存先: `~/.config/linux-auto/window.json`）。
+
+| ショートカットキー   | 動作                                       |
+| :------------------- | :----------------------------------------- |
+| `F11`                | 全画面の切り替え                           |
+| `F5` / `Ctrl+R`      | 再読み込み                                 |
+| `Ctrl` + `+` / `-` / `0` | 拡大 / 縮小 / 100% に戻す（タブレット向け） |
+| `Ctrl+Q`             | ウィンドウを閉じる（サーバーは止まりません） |
+
+| コマンド・オプション           | 動作                                                                 |
+| :----------------------------- | :------------------------------------------------------------------- |
+| `linux-auto --fullscreen`      | 全画面で開く（カーナビとして使う場合に。メニューの右クリックからも選べます） |
+| `linux-auto --windowed`        | 全画面にせずウィンドウで開く                                         |
+| `linux-auto --browser`         | 専用ウィンドウを使わずブラウザで開く（従来と同じ）                   |
+| `linux-auto --toolkit qt6`     | 使う部品を指定（`qt6` / `qt5` / `gtk`。既定は qt6 → qt5 → gtk の順に自動選択） |
+| `linux-auto --disable-gpu`     | 画面が真っ黒・ちらつく古い端末向けに GPU 描画を無効化                |
+| `linux-auto --migrate`         | 旧方式の登録を deb 版に切り替える（下記「旧方式からの移行」）        |
+| `linux-auto-setup-sdk --yes`   | Android SDK / DHU の自動セットアップ（`setup-sdk.py` と同じ）        |
+
+専用ウィンドウ用の部品が1つも入っていない場合は、通知を出したうえでブラウザで開きます。
+
+### 更新方法
+
+**新しいバージョンの deb を、インストールと同じコマンドで上書きインストールするだけ**です。アンインストールは不要です。
+
+```bash
+sudo apt install ./linux-auto.deb
+```
+
+deb のファイル名はバージョンに関係なく毎回 `linux-auto.deb` です。どのバージョンかは次のコマンドで確認できます（`apt` は中のバージョンを見て更新します）。
+
+```bash
+dpkg-deb -f linux-auto.deb Version   # これから入れる deb のバージョン
+dpkg -s linux-auto | grep Version     # いまインストールされているバージョン
+```
+
+更新すると自動で次の処理が行われます。
+
+1. `/usr/lib/linux-auto/` のプログラムが新しいバージョンに置き換わる
+2. ログイン中のユーザーのサーバー（`linux-auto.service`）が新しいバージョンで**自動的に再起動**される
+3. 開いていた専用ウィンドウは、サーバーの復帰を待って自動で新しい画面を読み込み直す
+
+- **設定はそのまま引き継がれます**: `~/.config/linux-auto/`（Linux Auto の設定）と `~/.android/headunit.ini`（DHU の設定）は deb の外にあるため、更新しても消えません。Android SDK / DHU（`~/Android/Sdk`）もそのままです。
+- **運転中・接続中の更新は避けてください**: サーバーの再起動で、接続中の Android Auto（DHU）はいったん切断されます。
+- **バージョンの確認**: `dpkg -s linux-auto | grep Version`（画面の About ページにも表示されます）
+- **画面が古いままに見える場合**: 専用ウィンドウで `F5` を押して再読み込みしてください。
+- **DHU 自体の更新**は deb とは別です。[DHU のアップデート](#dhu-のアップデート) を参照してください。
+
+#### 開発者向け: 新しいバージョンを作って配布する手順
+
+```bash
+cd ~/LinuxAuto
+git pull                                  # 最新のソースを取得
+# 1. static/index.html の About に書かれた「Version x.y.z」を上げる (deb のバージョンになります)
+# 2. deb を作成
+./build-deb.sh                            # → dist/linux-auto.deb (毎回同じファイル名で上書き)
+# 3. 自分の端末を更新して動作確認
+sudo apt install ./dist/linux-auto.deb
+```
+
+- バージョンは `./build-deb.sh 1.1.0` のように引数でも指定できます。**前回より大きい番号**にしてください（同じ番号だと `apt` が更新として扱いません）。
+- 配布する場合は、`dist/` の deb を GitHub の Releases などに添付してください。利用者は上記「更新方法」の手順で更新できます。
+- Windows で clone したソース（改行コードが CRLF）からビルドしても、`build-deb.sh` が LF に変換して詰めるので問題ありません。
+
+### 旧方式からの移行（git のフォルダで使っていた場合）
+
+以前 `install-service.sh` / `install-desktop-shortcut.sh` で登録していた端末では、旧方式の登録が deb 版より優先されてしまい、**git のフォルダにある古い Linux Auto が動き続けます**（`~/.config/` の設定は `/usr/lib/` より優先されるため）。
+deb をインストールした後に、**普段使っているユーザーで一度だけ**次を実行してください（`sudo` 不要）。
+
+```bash
+linux-auto --migrate
+```
+
+これだけで以下が行われます。
+
+- 旧サービス `~/.config/systemd/user/linux-auto.service` を停止し、`linux-auto.service.removed` にリネームして無効化
+- アプリメニューの旧アイコン `~/.local/share/applications/linux-auto.desktop`（ブラウザで開く版）を `.disabled` にリネームして無効化
+- デスクトップの旧アイコンを、専用ウィンドウで開く deb 版のアイコンに置き換え
+- deb 版のサービスを起動
+
+設定（`~/.config/linux-auto/`、`~/.android/headunit.ini`）はそのまま引き継がれます。移行後、git のフォルダ（例: `~/LinuxAuto`）は開発に使わないなら削除してかまいません。
+旧方式の登録が残っている場合は、deb のインストール時と `linux-auto` の起動時にも案内が表示されます。
+
+### アンインストール
+
+```bash
+sudo apt remove linux-auto
+```
+
+サーバーの停止と自動起動の解除も自動で行われます。設定ファイル（`~/.config/linux-auto/`、`~/.android/headunit.ini`）と Android SDK（`~/Android/Sdk`）は残るので、完全に消したい場合は手動で削除してください。
+
+### deb の作り方とインストール先
+
+ソースのフォルダで `./build-deb.sh` を実行すると `dist/linux-auto.deb` が作成されます（ファイル名にバージョンは含まれず、毎回同じファイルを上書きします）（必要なのは Ubuntu / Debian に標準で入っている `dpkg-deb` だけです）。
+Python だけで動くため、1つの deb で x86_64 / ARM のどちらにもインストールできます（`Architecture: all`）。
+
+| インストール先                                      | 中身                                                        |
+| :-------------------------------------------------- | :---------------------------------------------------------- |
+| `/usr/lib/linux-auto/`                              | `app.py`、`setup-sdk.py`、`linux-auto-window.py`、`connect.sh`、`static/` |
+| `/usr/bin/linux-auto`                               | 画面を専用ウィンドウで開くコマンド（アプリメニューの起動先） |
+| `/usr/bin/linux-auto-setup-sdk`                     | Android SDK / DHU の自動セットアップ                         |
+| `/usr/lib/systemd/user/linux-auto.service`          | サーバーのユーザーサービス（全ユーザーで自動起動）           |
+| `/usr/share/applications/linux-auto.desktop`        | アプリメニューのアイコン                                     |
+| `/usr/share/icons/hicolor/scalable/apps/linux-auto.svg` | アイコン画像                                             |
+
+deb 版でのサービスの操作は従来と同じです（`systemctl --user status linux-auto`、`journalctl --user -u linux-auto -f` など）。デバッグでサーバーをフォアグラウンドで動かす場合は、サービスを止めてから `python3 /usr/lib/linux-auto/app.py` を実行してください。
+
+---
+
 ## 使い方・起動方法
+
+> 以下は **git のフォルダから直接使う場合（従来の方式・開発用）** の手順です。deb パッケージ版は上の「[deb パッケージでインストール（おすすめ）](#deb-パッケージでインストールおすすめ)」を参照してください。
 
 Linux Auto は **「サーバー（常駐）」** と **「画面（WebUI）」** を分けて使う構成です。
 
@@ -484,6 +629,9 @@ Node.js, PHP, Spring Boot の開発経験をお持ちの方向けに、プロジ
 ```
 LinuxAuto/
 ├── app.py                      # バックエンド (Python 3 標準ライブラリのみ)
+├── linux-auto-window.py        # 画面を専用ウィンドウで開くランチャー (Qt WebEngine / WebKitGTK)
+├── build-deb.sh                # deb パッケージ作成スクリプト (出力: dist/)
+├── packaging/deb/              # deb の素材 (control, postinst/prerm/postrm, サービス, .desktop, コマンド)
 ├── install-service.sh          # systemd ユーザーサービス登録 / 解除スクリプト
 ├── open-ui.sh                  # 画面を開くだけのランチャー (アイコンの起動先)
 ├── start.sh                    # 手動 (フォアグラウンド) 起動シェル

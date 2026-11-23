@@ -1,0 +1,57 @@
+#!/bin/sh
+# Linux Auto - インストール / 更新後の処理 (postinst)
+#   - linux-auto.service (ユーザーサービス) を全ユーザーのログイン時に自動起動する設定にする
+#   - ログイン中のユーザーのサーバーを起動 (新規) / 新しいバージョンで再起動 (更新) する
+#   - 旧方式 (git のフォルダから install-service.sh 等で登録) が残っていれば案内を表示する
+set -e
+
+SERVICE=linux-auto.service
+
+# ログイン中の各ユーザーの systemd (ユーザーマネージャー) に対してコマンドを実行する
+for_each_logged_in_user() {
+    command -v loginctl >/dev/null 2>&1 || return 0
+    loginctl list-users --no-legend 2>/dev/null | while read -r uid user _rest; do
+        [ -n "$user" ] || continue
+        [ "$uid" -ge 1000 ] 2>/dev/null || continue
+        systemctl --user -M "$user@" "$@" >/dev/null 2>&1 || true
+    done
+}
+
+case "$1" in
+    configure)
+        if command -v systemctl >/dev/null 2>&1; then
+            # /etc/systemd/user/default.target.wants/ にリンクを作る (全ユーザー共通の自動起動)
+            systemctl --global enable "$SERVICE" >/dev/null 2>&1 || true
+
+            for_each_logged_in_user daemon-reload
+            if [ -n "$2" ]; then
+                # 更新: 動いているサーバーを新しいバージョンで再起動 (止まっている場合はそのまま)
+                for_each_logged_in_user try-restart "$SERVICE"
+            else
+                # 新規インストール: ログインし直さなくても使えるようにすぐ起動
+                for_each_logged_in_user start "$SERVICE"
+            fi
+        fi
+
+        # 旧方式の登録が残っているユーザーへの案内
+        legacy_found=0
+        for home in /home/*; do
+            [ -d "$home" ] || continue
+            if [ -f "$home/.config/systemd/user/$SERVICE" ] \
+               || grep -qs "open-ui.sh" "$home/.local/share/applications/linux-auto.desktop"; then
+                if [ "$legacy_found" = 0 ]; then
+                    echo ""
+                    echo "[Linux Auto] 旧方式 (git のフォルダから install-service.sh 等) の登録が残っています:"
+                    legacy_found=1
+                fi
+                echo "  - ${home##*/}: そのユーザーでターミナルから「linux-auto --migrate」を実行してください"
+            fi
+        done
+        if [ "$legacy_found" = 1 ]; then
+            echo "  (実行するまでは、古いサーバー・古いアイコンが優先されます)"
+            echo ""
+        fi
+        ;;
+esac
+
+exit 0

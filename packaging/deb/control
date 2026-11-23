@@ -1,0 +1,21 @@
+Package: linux-auto
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: all
+Maintainer: @MAINTAINER@
+Installed-Size: @INSTALLED_SIZE@
+Depends: python3 (>= 3.8), python3-pyqt6.qtwebengine | python3-pyqt5.qtwebengine | gir1.2-webkit2-4.1, xdg-utils
+Recommends: libnotify-bin, pkexec | policykit-1, python3-gi
+Suggests: adb
+Homepage: https://github.com/jikantoki/LinuxAuto
+Description: Android Auto (Google DHU) connection GUI for Ubuntu / Kubuntu
+ Linux Auto manages Android Auto connections through Google's Desktop Head
+ Unit (DHU) from a simple GUI. It supports USB and Wi-Fi (tethering)
+ connections, automatic reconnection and a headunit.ini editor.
+ .
+ The server runs as a systemd user service (linux-auto.service) and the
+ GUI opens in its own window (Qt WebEngine or WebKitGTK).
+ .
+ Google DHU and adb are not included in this package. Install them from
+ the in-app setup guide or with the "linux-auto-setup-sdk" command.

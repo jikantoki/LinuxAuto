@@ -1,0 +1,16 @@
+[Unit]
+Description=Linux Auto - Android Auto Headunit Support (WebUI server)
+Documentation=https://github.com/jikantoki/LinuxAuto
+
+[Service]
+Type=simple
+WorkingDirectory=/usr/lib/linux-auto
+ExecStart=/usr/bin/python3 /usr/lib/linux-auto/app.py --no-browser
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

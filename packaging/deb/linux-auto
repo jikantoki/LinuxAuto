@@ -1,0 +1,4 @@
+#!/bin/sh
+# Linux Auto - 画面を専用ウィンドウで開く (サーバーが止まっていれば起動する)
+# オプション一覧: linux-auto --help
+exec /usr/bin/python3 /usr/lib/linux-auto/linux-auto-window.py "$@"

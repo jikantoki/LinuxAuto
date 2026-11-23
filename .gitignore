@@ -1,0 +1,3 @@
+# build-deb.sh の出力
+dist/
+__pycache__/
