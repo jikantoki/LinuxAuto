@@ -37,6 +37,17 @@
   --radius-full: 9999px;
 
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* フォント: 日本語はゴシック体で統一 (明朝体にならないよう日本語フォントを明示) */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, 'Noto Sans CJK JP', 'Noto Sans JP', 'Source Han Sans JP',
+    'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', Meiryo,
+    'IPAexGothic', 'IPAPGothic', 'TakaoPGothic', 'VL PGothic', sans-serif;
+  --font-mono:
+    'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    'DejaVu Sans Mono', 'Noto Sans Mono CJK JP', 'Noto Sans CJK JP',
+    'IPAGothic', monospace;
 }
 
 * {
@@ -46,14 +57,29 @@
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
+  font-family: var(--font-sans);
   background-color: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+/* ボタン・入力欄・セレクトボックスはブラウザ既定のフォント (明朝体になる場合がある) を
+   使ってしまうため、ページのフォントを引き継がせる */
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
 }
 
 /* レイアウト */
@@ -568,7 +594,7 @@ body {
   padding: 1rem;
   height: 220px;
   overflow-y: auto;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: #cbd5e1;
   line-height: 1.6;
@@ -850,7 +876,7 @@ input:checked + .slider:before {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 1rem;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: #38bdf8;
   line-height: 1.5;
@@ -1127,7 +1153,7 @@ input:checked + .slider:before {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 1rem 1.25rem;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: #38bdf8;
   overflow-x: auto;
@@ -1370,7 +1396,7 @@ input:checked + .slider:before {
   color: var(--text-muted);
 }
 .net-item .value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.92rem;
   overflow-wrap: anywhere;
 }
@@ -1407,7 +1433,7 @@ input:checked + .slider:before {
   color: var(--text-muted);
 }
 .wifi-target-ip {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 1.35rem;
   font-weight: 700;
   color: var(--success);

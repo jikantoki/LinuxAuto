@@ -259,6 +259,18 @@ def save_window_state(state):
         log(f"ウィンドウの状態を保存できませんでした: {e}")
 
 
+def japanese_sans_font():
+    """日本語のゴシック体のフォント名を返します (fontconfig が日本語用に選ぶもの)。
+    専用ウィンドウの既定フォントに使い、ページが指定していない部分が明朝体になるのを防ぎます。"""
+    if shutil.which("fc-match"):
+        res = run_quiet(["fc-match", "-f", "%{family}", "sans-serif:lang=ja"], timeout=5)
+        if res is not None and res.returncode == 0:
+            family = res.stdout.split(",")[0].strip()
+            if family:
+                return family
+    return "sans-serif"
+
+
 def clamp_zoom(value):
     try:
         value = float(value)
@@ -416,17 +428,23 @@ def import_qt(major):
         from PyQt6.QtGui import QIcon, QDesktopServices, QKeySequence, QShortcut
         from PyQt6.QtWidgets import QApplication, QMainWindow
         from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-        from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+        from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
         from PyQt6.QtWebEngineWidgets import QWebEngineView
         no_cache = QWebEngineProfile.HttpCacheType.NoCache
+        font_kinds = (QWebEngineSettings.FontFamily.StandardFont,
+                      QWebEngineSettings.FontFamily.SansSerifFont,
+                      QWebEngineSettings.FontFamily.SerifFont)
         share_gl = Qt.ApplicationAttribute.AA_ShareOpenGLContexts
     else:
         from PyQt5.QtCore import Qt, QUrl, QByteArray, QCoreApplication, QTimer
         from PyQt5.QtGui import QIcon, QDesktopServices, QKeySequence
         from PyQt5.QtWidgets import QApplication, QMainWindow, QShortcut
         from PyQt5.QtNetwork import QLocalServer, QLocalSocket
-        from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineProfile
+        from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineProfile, QWebEngineSettings
         no_cache = QWebEngineProfile.NoCache
+        font_kinds = (QWebEngineSettings.StandardFont,
+                      QWebEngineSettings.SansSerifFont,
+                      QWebEngineSettings.SerifFont)
         share_gl = Qt.AA_ShareOpenGLContexts
     return SimpleNamespace(**locals())
 
@@ -460,6 +478,10 @@ def run_qt(qt, args):
     profile = qt.QWebEngineProfile("linux-auto", app)
     # 更新 (deb の入れ替え) 後に古い画面が残らないよう HTTP キャッシュは使わない (localhost なので速度差なし)
     profile.setHttpCacheType(qt.no_cache)
+    # 既定フォントをゴシック体で統一 (Qt WebEngine の既定は明朝体系のため、指定の無い部分が明朝体になる)
+    sans_font = japanese_sans_font()
+    for kind in qt.font_kinds:
+        profile.settings().setFontFamily(kind, sans_font)
 
     class Page(qt.QWebEnginePage):
         """外部リンクは普段のブラウザで、Linux Auto 自身の画面はこのウィンドウで開く"""
@@ -706,6 +728,12 @@ def run_gtk(g, args):
         context.set_cache_model(WebKit2.CacheModel.DOCUMENT_VIEWER)
         view = WebKit2.WebView()
         view.set_zoom_level(clamp_zoom(state.get("zoom", 1.0)))
+        # 既定フォントをゴシック体で統一 (指定の無い部分が明朝体にならないように)
+        sans_font = japanese_sans_font()
+        web_settings = view.get_settings()
+        web_settings.set_default_font_family(sans_font)
+        web_settings.set_sans_serif_font_family(sans_font)
+        web_settings.set_serif_font_family(sans_font)
         win.add(view)
 
         status = {"waiting": False, "since": time.time(), "timer": None, "fullscreen": False}
